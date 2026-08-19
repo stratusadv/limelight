@@ -8,8 +8,24 @@ A limelight test is written once and runs in two modes. The silent mode is a pla
 
 ## Installation
 
+Add limelight to your `pyproject.toml`:
+
+```toml
+[project.optional-dependencies]
+development = [
+    "limelight[django,pytest]",
+]
+
+[tool.uv.sources]
+limelight = { git = "https://github.com/stratusadv/limelight", branch = "main" }
 ```
-pip install "limelight[django,pytest] @ git+https://github.com/stratusadv/limelight@v0.1.0"
+
+The `branch` key resolves to a commit that `uv.lock` pins, so a later commit on `main` reaches the project only after `uv lock --upgrade-package limelight`.
+
+Install it directly with pip instead:
+
+```
+pip install "limelight[django,pytest] @ git+https://github.com/stratusadv/limelight@main"
 ```
 
 The `django` extra installs the `limelight.django` adapter. The `pytest` extra installs `pytest` and `pytest-playwright` for the plugin.
