@@ -1,0 +1,57 @@
+[build-system]
+requires = ['uv_build>=0.7.13,<0.8']
+build-backend = 'uv_build'
+
+[project]
+name = "limelight"
+version = "0.1.0"
+description = "Narrated Playwright demos that double as silent end-to-end tests"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Brayden Carlson" },
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+requires-python = ">=3.13"
+
+dependencies = [
+    "playwright>=1.49",
+    "typing_extensions>=4.12",
+]
+
+[project.scripts]
+limelight-export = "limelight.export:main"
+limelight-render = "limelight.render:main"
+
+[project.optional-dependencies]
+django = [
+    "django>=5.0",
+]
+
+pytest = [
+    "pytest>=8.0",
+    "pytest-playwright>=0.7",
+]
+
+development = [
+    "django>=5.0",
+    "pytest>=8.0",
+    "pytest-playwright>=0.7",
+    "ruff>=0.16",
+    "ty>=0.0.69",
+]
+
+[tool.uv.build-backend]
+module-name = 'limelight'
+module-root = ''
+
+[tool.pytest.ini_options]
+markers = [
+    "browser: drives overlay.js in a real chromium; skips itself when no browser is installed",
+]
+pythonpath = ["tests"]
+testpaths = ["tests"]

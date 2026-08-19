@@ -1,0 +1,94 @@
+indent-width = 4
+line-length = 120
+src = ["limelight", "tests"]
+target-version = "py313"
+
+exclude = [
+    "*/migrations/*",
+    "/site",
+    ".DS_Store",
+    ".eggs",
+    ".git",
+    ".hg",
+    ".hypothesis",
+    ".idea",
+    ".ipynb_checkpoints",
+    ".mypy_cache",
+    ".nox",
+    ".pybuilder",
+    ".pytest_cache",
+    ".pyre",
+    ".pytype",
+    ".ropeproject",
+    ".scrapy",
+    ".svn",
+    ".tox",
+    ".venv",
+    ".venv*",
+    ".venv_*",
+    ".webassets-cache",
+    "__pycache__",
+    "__pypackages__",
+    "build",
+    "cover",
+    "CVS",
+    "develop-eggs",
+    "dist",
+    "docs/_build",
+    "downloads",
+    "eggs",
+    "htmlcov",
+    "instance",
+    "lib",
+    "lib64",
+    "migrations",
+    "node_modules",
+    "parts",
+    "profile_default",
+    "sdist",
+    "share/python-wheels",
+    "target",
+    "tmp/cache",
+    "var",
+    "venv",
+    "venv*",
+    "venv_*",
+    "venv.bak",
+    "wheels",
+]
+
+[format]
+indent-style = "space"
+quote-style = "single"
+
+[lint]
+select = ["ALL"]
+ignore = [
+    "COM812",
+    "CPY001",
+    "D",
+    "I001",
+    "ISC001",
+    "UP035",
+]
+
+[lint.flake8-quotes]
+inline-quotes = "single"
+
+[lint.pylint]
+max-args = 8
+
+[lint.per-file-ignores]
+"limelight/video.py" = [
+    "S603",
+]
+"tests/*" = [
+    "ANN401",
+    "ARG001",
+    "ARG002",
+    "ARG005",
+    "INP001",
+    "PLR2004",
+    "S101",
+    "SLF001",
+]
