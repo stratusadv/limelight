@@ -42,6 +42,7 @@ SPOT_SCROLL_SETTLE_MS = 250
 SPOT_SCROLL_TIMEOUT_MS = 4000
 TITLE_FADE_MS = 450
 TYPE_CHAR_MS = 55
+WAIT_OVERHEAD_MS_MIN = 1.0
 WAIT_PAUSED_MS_MAX = 3_600_000
 WAIT_SLICE_COUNT_MAX = 100_000
 WAIT_SLICE_MS = 100
@@ -215,6 +216,14 @@ class Overlay:
 
         return speed_factor
 
+    def _overhead_ms(self, started: float) -> float:
+        elapsed_ms = (time.monotonic() - started) * 1000
+
+        if elapsed_ms < WAIT_OVERHEAD_MS_MIN:
+            return 0.0
+
+        return elapsed_ms
+
     def _spent_ms(self, started: float, floor_ms: float) -> float:
         elapsed_ms = (time.monotonic() - started) * 1000
 
@@ -250,7 +259,11 @@ class Overlay:
 
             return
 
+        ensure_started = time.monotonic()
+
         self._ensure()
+
+        remaining_ms -= self._overhead_ms(ensure_started)
 
         paused_ms_total = 0.0
 
@@ -281,7 +294,8 @@ class Overlay:
                 continue
 
             speed_factor = self._speed_factor_clamped(state.speed_factor)
-            slice_ms = min(float(WAIT_SLICE_MS), remaining_ms / speed_factor)
+            state_read_ms = self._overhead_ms(started)
+            slice_ms = min(float(WAIT_SLICE_MS), max(0.0, remaining_ms / speed_factor - state_read_ms))
 
             self._page.wait_for_timeout(slice_ms)
 
