@@ -1,6 +1,6 @@
 # limelight
 
-A narration layer for Playwright that turns end-to-end tests into demo videos.
+A narration layer for Playwright that turns end-to-end tests into demos.
 
 ## Overview
 
