@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing_extensions import TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from limelight.config import DemoConfig
+from limelight.frames import renderer_for
 from limelight.navigator import Navigator
 from limelight.overlay import BEAT_MS_DEFAULT
 from limelight.presenter import presenter_build
 
 if TYPE_CHECKING:
     from playwright.sync_api import Locator, Page
-    from typing_extensions import Self
+    from typing import Self
 
     from limelight.application import Application
     from limelight.ledger import LedgerRow
@@ -34,6 +35,8 @@ class DemoSession:
 
         self.nav = self.navigator_class(self)
 
+        self.scenes_prepare()
+
     @classmethod
     def start(
         cls,
@@ -42,21 +45,20 @@ class DemoSession:
         *,
         shot_directory_name: str,
         config: DemoConfig | None = None,
-        presenter: Presenter | None = None,
         theme: Theme | None = None,
     ) -> Self:
         if config is None:
             config = DemoConfig.from_env()
 
-        if presenter is None:
-            shot_directory = Path(SHOT_DIRECTORY_ROOT) / shot_directory_name
+        shot_directory = Path(SHOT_DIRECTORY_ROOT) / shot_directory_name
 
-            presenter = presenter_build(
-                page,
-                config,
-                shot_directory=shot_directory,
-                theme=theme,
-            )
+        presenter = presenter_build(
+            page,
+            config,
+            shot_directory=shot_directory,
+            renderer=renderer_for(page),
+            theme=theme,
+        )
 
         return cls(page, application, presenter=presenter)
 
@@ -126,6 +128,9 @@ class DemoSession:
 
     def press(self, locator: Locator, key: str) -> None:
         self.presenter.press(locator, key)
+
+    def scenes_prepare(self) -> None:
+        pass
 
     def select(self, locator: Locator, option_label: str) -> None:
         self.presenter.select(locator, option_label)

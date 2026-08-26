@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from types import SimpleNamespace
-from typing_extensions import TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from limelight.gestures import slide_to_end
 

@@ -79,6 +79,16 @@ inline-quotes = "single"
 max-args = 8
 
 [lint.per-file-ignores]
+"limelight/django/__init__.py" = [
+    "S107",
+]
+"limelight/django/pytest_plugin.py" = [
+    "ARG001",
+    "PLC0415",
+]
+"limelight/django/server.py" = [
+    "BLE001",
+]
 "limelight/video.py" = [
     "S603",
 ]

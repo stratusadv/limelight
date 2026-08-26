@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from typing_extensions import TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from limelight.export import (
     chapters_render,

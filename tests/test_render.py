@@ -7,7 +7,7 @@ import pytest
 
 from pathlib import Path
 
-from limelight.render import main, trim_lead_ms_detect, video_locate
+from limelight.render import main, trim_lead_ms_detect, video_locate, video_needs_render
 
 
 def transcript_write(directory: Path, payload: dict[str, object]) -> Path:
@@ -16,6 +16,21 @@ def transcript_write(directory: Path, payload: dict[str, object]) -> Path:
     path.write_text(json.dumps(payload), encoding='utf-8')
 
     return path
+
+
+def test_video_locate_prefers_the_rendered_video(tmp_path: Path) -> None:
+    (tmp_path / 'old.webm').write_bytes(b'')
+    (tmp_path / 'video.mp4').write_bytes(b'')
+
+    assert video_locate(tmp_path) == tmp_path / 'video.mp4'
+
+
+def test_video_needs_render_only_with_additions() -> None:
+    assert video_needs_render(Path('video.mp4'), audio=None, subtitles=None, trim_lead_ms=0) is False
+    assert video_needs_render(Path('video.mp4'), audio=None, subtitles=Path('s.vtt'), trim_lead_ms=0) is True
+    assert video_needs_render(Path('video.mp4'), audio=Path('a.wav'), subtitles=None, trim_lead_ms=0) is True
+    assert video_needs_render(Path('video.mp4'), audio=None, subtitles=None, trim_lead_ms=10) is True
+    assert video_needs_render(Path('demo.webm'), audio=None, subtitles=None, trim_lead_ms=0) is True
 
 
 def test_video_locate_prefers_newest(tmp_path: Path) -> None:
@@ -97,8 +112,61 @@ def test_main_writes_exports_then_renders_video(tmp_path: Path, monkeypatch: pyt
     assert (directory / 'chapters.txt').is_file()
     assert (directory / 'subtitles.vtt').is_file()
     assert (directory / 'walkthrough.md').is_file()
-    assert rendered['mp4'] == (video, None, directory / 'subtitles.vtt', 0)
+    assert rendered['mp4'] == (video, None, None, 0)
     assert 'gif' not in rendered
+
+
+def test_main_subtitles_flag_burns_captions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    directory = tmp_path / 'demo'
+    directory.mkdir()
+
+    payload: dict[str, object] = {'events': [], 'started_at_epoch_ms': 100}
+
+    transcript_write(directory, payload)
+
+    video = directory / 'demo.webm'
+    video.write_bytes(b'')
+
+    rendered: dict[str, object] = {}
+
+    def render_mp4_stub(source: Path, destination: Path | None = None, **options: object) -> Path:
+        rendered['subtitles'] = options['subtitles']
+
+        return source.with_suffix('.mp4')
+
+    monkeypatch.setattr('limelight.render.render_mp4', render_mp4_stub)
+    monkeypatch.setattr('limelight.render.shutil.which', lambda name: None)
+
+    arguments = [str(directory), '--subtitles']
+    exit_code = main(arguments)
+
+    assert exit_code == 0
+    assert rendered['subtitles'] == directory / 'subtitles.vtt'
+
+
+def test_main_keeps_a_rendered_video_as_is(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    directory = tmp_path / 'demo'
+    directory.mkdir()
+
+    payload: dict[str, object] = {'events': [], 'started_at_epoch_ms': 100}
+
+    transcript_write(directory, payload)
+
+    video = directory / 'video.mp4'
+    video.write_bytes(b'')
+
+    def render_mp4_stub(source: Path, destination: Path | None = None, **options: object) -> Path:
+        message = 'a rendered video must not be re-encoded'
+        raise AssertionError(message)
+
+    monkeypatch.setattr('limelight.render.render_mp4', render_mp4_stub)
+    monkeypatch.setattr('limelight.render.shutil.which', lambda name: None)
+
+    arguments = [str(directory)]
+    exit_code = main(arguments)
+
+    assert exit_code == 0
+    assert video_locate(directory) == video
 
 
 def test_main_gif_flag_renders_gif(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

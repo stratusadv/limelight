@@ -3,11 +3,15 @@ from __future__ import annotations
 import shutil
 import subprocess
 
-from typing_extensions import TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+
+FRAMES_CRF_DEFAULT = 14
+FRAMES_CRF_MAX = 51
+FRAMES_PRESET_DEFAULT = 'fast'
 
 GIF_FPS_DEFAULT = 12
 GIF_WIDTH_DEFAULT = 960
@@ -33,6 +37,42 @@ def _subtitles_filter(subtitles: Path) -> str:
     path_text = str(subtitles).replace('\\', '\\\\').replace("'", "\\'").replace(':', '\\:')
 
     return f'subtitles={path_text}'
+
+
+def ffmpeg_arguments_frames(
+    destination: Path,
+    *,
+    fps: int,
+    crf: int = FRAMES_CRF_DEFAULT,
+    preset: str = FRAMES_PRESET_DEFAULT,
+) -> list[str]:
+    if fps < 1:
+        message = f'fps must be positive: {fps}'
+        raise ValueError(message)
+
+    if crf < 0 or crf > FRAMES_CRF_MAX:
+        message = f'crf must fall between 0 and {FRAMES_CRF_MAX}: {crf}'
+        raise ValueError(message)
+
+    return [
+        '-f',
+        'image2pipe',
+        '-framerate',
+        str(fps),
+        '-i',
+        '-',
+        '-c:v',
+        'libx264',
+        '-preset',
+        preset,
+        '-crf',
+        str(crf),
+        '-pix_fmt',
+        'yuv420p',
+        '-movflags',
+        '+faststart',
+        str(destination),
+    ]
 
 
 def ffmpeg_arguments_gif(
@@ -106,6 +146,12 @@ def ffmpeg_arguments_mp4(
     arguments += [str(destination)]
 
     return arguments
+
+
+def ffmpeg_process_start(arguments: list[str]) -> subprocess.Popen[bytes]:
+    command = [_binary_locate('ffmpeg'), '-y', '-loglevel', 'error', *arguments]
+
+    return subprocess.Popen(command, stdin=subprocess.PIPE)
 
 
 def ffmpeg_run(arguments: list[str]) -> None:

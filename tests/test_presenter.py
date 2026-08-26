@@ -2,17 +2,18 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from pathlib import Path
-from typing_extensions import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from limelight.config import DEMO_MODE_NARRATE, DemoConfig
 from limelight.presenter import Presenter, PresenterNarrated, PresenterSilent, presenter_build
 
-from fakes import FakeLocator, FakePage
+from fakes import FakeFrameRenderer, FakeLocator, FakePage
 
 if TYPE_CHECKING:
-    import pytest
-
+    from limelight.frames import FrameRenderer
     from limelight.ledger import LedgerRow
 
 
@@ -28,6 +29,50 @@ def test_narrated_config_builds_narrated_presenter() -> None:
     presenter = presenter_build(FakePage().as_page(), config, shot_directory=Path('test-results/demo'))
 
     assert isinstance(presenter, PresenterNarrated)
+
+
+def test_video_config_needs_a_renderer() -> None:
+    config = DemoConfig(mode=DEMO_MODE_NARRATE, video=True)
+
+    with pytest.raises(ValueError, match='FrameRenderer'):
+        presenter_build(FakePage().as_page(), config, shot_directory=Path('test-results/demo'))
+
+
+def test_video_config_starts_the_renderer_into_the_shot_directory(tmp_path: Path) -> None:
+    config = DemoConfig(mode=DEMO_MODE_NARRATE, video=True)
+    renderer = FakeFrameRenderer()
+
+    presenter = presenter_build(
+        FakePage().as_page(),
+        config,
+        shot_directory=tmp_path / 'demo',
+        renderer=cast('FrameRenderer', renderer),
+    )
+
+    assert isinstance(presenter, PresenterNarrated)
+    assert len(renderer.sinks) == 1
+    assert renderer.sinks[0]._destination == tmp_path / 'demo' / 'video.mp4'
+
+
+def test_video_presenter_holds_by_frames_and_retargets(tmp_path: Path) -> None:
+    config = DemoConfig(mode=DEMO_MODE_NARRATE, video=True)
+    renderer = FakeFrameRenderer()
+    page = FakePage()
+    page_next = FakePage()
+
+    presenter = presenter_build(
+        page.as_page(),
+        config,
+        shot_directory=tmp_path / 'demo',
+        renderer=cast('FrameRenderer', renderer),
+    )
+
+    presenter.beat(300)
+    presenter.use_page(page_next.as_page())
+
+    assert renderer.waits_ms == [300]
+    assert renderer.retargets == [page_next.as_page()]
+    assert page.waits_ms == []
 
 
 def test_both_presenters_satisfy_protocol() -> None:

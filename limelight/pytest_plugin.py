@@ -2,9 +2,16 @@ from __future__ import annotations
 
 import pytest
 
-from typing_extensions import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any
 
 from limelight.config import DemoConfig
+from limelight.frames import (
+    FrameRenderer,
+    endpoint_free,
+    launch_arguments_frame_control,
+    renderer_register,
+    renderer_unregister,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -16,7 +23,7 @@ CONSOLE_ERROR_IGNORED_FRAGMENTS: tuple[str, ...] = (
     'TypeError: Failed to fetch',
 )
 
-DEVICE_SCALE_FACTOR_VIDEO = 1
+DEVICE_SCALE_FACTOR_VIDEO = 2
 
 ERROR_MESSAGE_COUNT_MAX = 100
 
@@ -25,6 +32,9 @@ VIEWPORT_WIDTH = 1920
 
 VIEWPORT_HEIGHT_VIDEO = 1080
 VIEWPORT_WIDTH_VIDEO = 1920
+
+WINDOW_HEIGHT = 1080
+WINDOW_WIDTH = 1920
 
 
 class JavascriptErrorLog:
@@ -70,6 +80,59 @@ class JavascriptErrorLog:
         return '\n'.join(lines)
 
 
+def _browser_context_args_for(
+    context_args: dict[str, Any],
+    config: DemoConfig,
+    *,
+    viewport: dict[str, int],
+    viewport_video: dict[str, int],
+) -> dict[str, Any]:
+    if config.video:
+        return {
+            **context_args,
+            'device_scale_factor': DEVICE_SCALE_FACTOR_VIDEO,
+            'no_viewport': False,
+            'viewport': viewport_video,
+        }
+
+    if config.narrated:
+        return {
+            **context_args,
+            'no_viewport': True,
+            'viewport': None,
+        }
+
+    return {
+        **context_args,
+        'no_viewport': False,
+        'reduced_motion': 'reduce',
+        'viewport': viewport,
+    }
+
+
+def _browser_type_launch_args_for(
+    launch_args: dict[str, Any],
+    config: DemoConfig,
+    endpoint: str,
+    *,
+    window_size: dict[str, int],
+) -> dict[str, Any]:
+    if config.video:
+        arguments = [
+            *launch_args.get('args', []),
+            *launch_arguments_frame_control(endpoint, device_scale_factor=DEVICE_SCALE_FACTOR_VIDEO),
+        ]
+
+        return {**launch_args, 'args': arguments, 'headless': True}
+
+    arguments = [
+        *launch_args.get('args', []),
+        f'--window-size={window_size["width"]},{window_size["height"]}',
+    ]
+
+    return {**launch_args, 'args': arguments}
+
+
 @pytest.fixture(scope='session')
 def browser_context_args(
     browser_context_args: dict[str, Any],
@@ -77,48 +140,27 @@ def browser_context_args(
     demo_viewport: dict[str, int],
     demo_viewport_video: dict[str, int],
 ) -> dict[str, Any]:
-    context_args = {
-        **browser_context_args,
-        'record_video_size': demo_viewport,
-    }
-
-    if demo_config.video:
-        record_video_size = {
-            'width': demo_viewport_video['width'] * DEVICE_SCALE_FACTOR_VIDEO,
-            'height': demo_viewport_video['height'] * DEVICE_SCALE_FACTOR_VIDEO,
-        }
-
-        return {**context_args, 'record_video_size': record_video_size}
-
-    if demo_config.narrated:
-        return context_args
-
-    return {
-        **context_args,
-        'no_viewport': False,
-        'reduced_motion': 'reduce',
-        'viewport': demo_viewport,
-    }
+    return _browser_context_args_for(
+        browser_context_args,
+        demo_config,
+        viewport=demo_viewport,
+        viewport_video=demo_viewport_video,
+    )
 
 
 @pytest.fixture(scope='session')
 def browser_type_launch_args(
     browser_type_launch_args: dict[str, Any],
     demo_config: DemoConfig,
-    demo_viewport_video: dict[str, int],
+    demo_frame_endpoint: str,
+    demo_window_size: dict[str, int],
 ) -> dict[str, Any]:
-    if not demo_config.video:
-        return browser_type_launch_args
-
-    window_size = f'{demo_viewport_video["width"]},{demo_viewport_video["height"]}'
-
-    launch_args = [
-        *browser_type_launch_args.get('args', []),
-        f'--force-device-scale-factor={DEVICE_SCALE_FACTOR_VIDEO}',
-        f'--window-size={window_size}',
-    ]
-
-    return {**browser_type_launch_args, 'args': launch_args}
+    return _browser_type_launch_args_for(
+        browser_type_launch_args,
+        demo_config,
+        demo_frame_endpoint,
+        window_size=demo_window_size,
+    )
 
 
 @pytest.fixture(scope='session')
@@ -132,6 +174,11 @@ def demo_console_error_ignored_fragments() -> tuple[str, ...]:
 
 
 @pytest.fixture(scope='session')
+def demo_frame_endpoint() -> str:
+    return endpoint_free()
+
+
+@pytest.fixture(scope='session')
 def demo_viewport() -> dict[str, int]:
     return {'width': VIEWPORT_WIDTH, 'height': VIEWPORT_HEIGHT}
 
@@ -139,6 +186,33 @@ def demo_viewport() -> dict[str, int]:
 @pytest.fixture(scope='session')
 def demo_viewport_video() -> dict[str, int]:
     return {'width': VIEWPORT_WIDTH_VIDEO, 'height': VIEWPORT_HEIGHT_VIDEO}
+
+
+@pytest.fixture(scope='session')
+def demo_window_size() -> dict[str, int]:
+    return {'width': WINDOW_WIDTH, 'height': WINDOW_HEIGHT}
+
+
+@pytest.fixture(autouse=True)
+def frame_renderer(
+    request: pytest.FixtureRequest,
+    demo_config: DemoConfig,
+    demo_frame_endpoint: str,
+) -> Iterator[FrameRenderer | None]:
+    if not demo_config.video or 'page' not in request.fixturenames:
+        yield None
+
+        return
+
+    page = request.getfixturevalue('page')
+    renderer = FrameRenderer(page, endpoint=demo_frame_endpoint)
+
+    renderer_register(page, renderer)
+
+    yield renderer
+
+    renderer_unregister(page)
+    renderer.stop()
 
 
 @pytest.fixture(autouse=True)

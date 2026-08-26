@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing_extensions import TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from limelight.components import Modal, SearchAndSelect, SlideButton
 
@@ -10,8 +10,8 @@ from fakes import FakeLocator, FakePage
 if TYPE_CHECKING:
     import pytest
 
+    from collections.abc import Callable
     from playwright.sync_api import Locator
-    from typing_extensions import Callable
 
 
 def expect_stub(locator: object) -> SimpleNamespace:
@@ -164,3 +164,42 @@ def test_search_and_select_choice_matches_exact_text_when_asked() -> None:
 
     assert root.owner_page.role_queries == []
     assert root.owner_page.text_queries == [('Row 1', True)]
+
+
+def test_modal_subclass_root_uses_its_selector() -> None:
+    class OffcanvasModal(Modal):
+        root_selector = '.offcanvas.show'
+
+    page = FakePage()
+
+    assert OffcanvasModal(page.as_page()).root is not None
+    assert page.role_queries == []
+    assert page.locator_selectors == ['.offcanvas.show']
+
+
+def test_search_and_select_subclass_locates_its_own_parts() -> None:
+    class ChoicesWidget(SearchAndSelect):
+        choice_selector = 'li.choice'
+        dropdown_selector = 'div.choices'
+        search_placeholder = 'Filter...'
+        toggle_selector = 'button.choices-toggle'
+
+    root = FakeLocator()
+    widget = ChoicesWidget(root.as_locator())
+
+    handles: list[Locator] = [widget.toggle, widget.dropdown, widget.choices, widget.search_field]
+
+    assert len(handles) == 4
+    assert root.selector_queries == ['button.choices-toggle', 'div.choices', 'li.choice']
+    assert root.placeholder_queries == ['Filter...']
+
+
+def test_search_and_select_within_filters_on_the_subclass_toggle() -> None:
+    class ChoicesWidget(SearchAndSelect):
+        toggle_selector = 'button.choices-toggle'
+
+    container = FakeLocator()
+
+    ChoicesWidget.within(container.as_locator())
+
+    assert container.owner_page.locator_selectors == ['button.choices-toggle']

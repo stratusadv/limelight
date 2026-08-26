@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from typing_extensions import override
+from typing import override
 
 from limelight.scene import Scene
 from limelight.session import DemoSession

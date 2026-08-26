@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from typing_extensions import TYPE_CHECKING
+from typing import TYPE_CHECKING
 
-from limelight.overlay import OVERLAY_JAVASCRIPT, Overlay
+from limelight.overlay import OVERLAY_JAVASCRIPT, SPOT_BOX_POLL_MS, Overlay
 from limelight.theme import Theme
 from limelight.timing import DemoTiming
 
-from fakes import FakeLocator, FakePage
+from fakes import FakeClock, FakeLocator, FakePage
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -397,3 +397,28 @@ def test_title_card_hides_then_removes() -> None:
     )
 
     assert hide_index < remove_index
+
+
+def test_clock_measures_holds_in_frames() -> None:
+    page = FakePage()
+    clock = FakeClock()
+    overlay = Overlay(page.as_page(), DemoTiming(step_ms=1000), clock=clock)
+
+    overlay.beat(400)
+    overlay.hold()
+
+    assert clock.waits_ms == [400, 1000]
+    assert page.waits_ms == []
+
+
+def test_clock_types_one_character_per_wait() -> None:
+    page = FakePage()
+    clock = FakeClock()
+    overlay = Overlay(page.as_page(), DemoTiming(step_ms=1000), clock=clock)
+    locator = FakeLocator(boxes=[page.locator_box])
+
+    overlay.fill(locator.as_locator(), 'ab')
+
+    assert [value for value, _delay in locator.typed_sequences] == ['a', 'b']
+    assert len(clock.waits_ms) >= 2
+    assert set(page.waits_ms) <= {SPOT_BOX_POLL_MS}

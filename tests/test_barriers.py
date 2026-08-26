@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from types import SimpleNamespace
-from typing_extensions import TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
@@ -12,7 +12,7 @@ from limelight.barriers import trigger_until_navigation, trigger_until_response,
 from fakes import FakeLocator, FakePage
 
 if TYPE_CHECKING:
-    from typing_extensions import Callable
+    from collections.abc import Callable
 
 
 def expect_outcomes_stub(outcomes: list[bool]) -> Callable[[object], SimpleNamespace]:
@@ -99,12 +99,34 @@ def test_attempt_count_must_be_positive() -> None:
         trigger_until_navigation(page.as_page(), trigger, url_pattern='**/done/', attempt_count=0)
 
 
-def test_url_fragment_must_not_be_empty() -> None:
+def test_response_needs_a_url_fragment_or_a_predicate() -> None:
     page = FakePage()
     _, trigger = trigger_counter()
 
-    with pytest.raises(ValueError, match='url_fragment'):
-        trigger_until_response(page.as_page(), trigger, url_fragment='')
+    with pytest.raises(ValueError, match='exactly one'):
+        trigger_until_response(page.as_page(), trigger)
+
+
+def test_response_rejects_both_a_url_fragment_and_a_predicate() -> None:
+    page = FakePage()
+    _, trigger = trigger_counter()
+
+    with pytest.raises(ValueError, match='exactly one'):
+        trigger_until_response(
+            page.as_page(),
+            trigger,
+            url_fragment='orders/',
+            predicate=lambda response: True,
+        )
+
+
+def test_response_accepts_a_predicate() -> None:
+    page = FakePage()
+    calls, trigger = trigger_counter()
+
+    trigger_until_response(page.as_page(), trigger, predicate=lambda response: True)
+
+    assert calls == [1]
 
 
 def test_visible_success_first_attempt(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -142,3 +164,12 @@ def test_visible_raises_when_attempts_exhausted(monkeypatch: pytest.MonkeyPatch)
         trigger_until_visible(trigger, FakeLocator().as_locator(), attempt_count=2)
 
     assert calls == [1, 1]
+
+
+def test_navigation_accepts_any_url_when_no_pattern_is_given() -> None:
+    page = FakePage()
+    calls, trigger = trigger_counter()
+
+    trigger_until_navigation(page.as_page(), trigger)
+
+    assert calls == [1]

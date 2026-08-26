@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing_extensions import TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from playwright.sync_api import expect
 
@@ -9,10 +9,12 @@ from limelight.gestures import slide_to_end
 
 if TYPE_CHECKING:
     from playwright.sync_api import Locator, Page
-    from typing_extensions import Self
+    from typing import Self
 
 
 class Modal:
+    root_selector = ''
+
     def __init__(self, page: Page) -> None:
         self._page = page
 
@@ -31,10 +33,18 @@ class Modal:
 
     @property
     def root(self) -> Locator:
+        if self.root_selector:
+            return self._page.locator(self.root_selector)
+
         return self._page.get_by_role('dialog')
 
 
 class SearchAndSelect:
+    choice_selector = '.list-group-item'
+    dropdown_selector = 'div.list-group'
+    search_placeholder = 'Search...'
+    toggle_selector = 'button.form-control'
+
     def __init__(self, root: Locator) -> None:
         self._root = root
 
@@ -43,7 +53,7 @@ class SearchAndSelect:
         root = (
             container
             .locator('div.position-relative')
-            .filter(has=container.page.locator('button.form-control'))
+            .filter(has=container.page.locator(cls.toggle_selector))
             .last
         )
 
@@ -51,19 +61,19 @@ class SearchAndSelect:
 
     @property
     def choices(self) -> Locator:
-        return self._root.locator('.list-group-item')
+        return self._root.locator(self.choice_selector)
 
     @property
     def dropdown(self) -> Locator:
-        return self._root.locator('div.list-group')
+        return self._root.locator(self.dropdown_selector)
 
     @property
     def search_field(self) -> Locator:
-        return self._root.get_by_placeholder('Search...')
+        return self._root.get_by_placeholder(self.search_placeholder)
 
     @property
     def toggle(self) -> Locator:
-        return self._root.locator('button.form-control')
+        return self._root.locator(self.toggle_selector)
 
     def choice(self, label: str, *, exact: bool = False) -> Locator:
         if exact:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing_extensions import TYPE_CHECKING, Self, cast
+from typing import TYPE_CHECKING, Self, cast
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 
     from playwright.sync_api import FloatRect, Locator, Page
 
+    from limelight.frames import VideoSink
     from limelight.ledger import LedgerRow
 
 
@@ -44,6 +45,18 @@ class FakeBarrier:
             raise PlaywrightTimeoutError(message)
 
         return False
+
+
+class FakeBrowserContext:
+    def __init__(self) -> None:
+        self.added_cookies: list[Mapping[str, object]] = []
+        self.clear_count = 0
+
+    def add_cookies(self, cookies: Sequence[Mapping[str, object]]) -> None:
+        self.added_cookies.extend(cookies)
+
+    def clear_cookies(self) -> None:
+        self.clear_count += 1
 
 
 class FakeLocator:
@@ -187,6 +200,7 @@ class FakeMouse:
 
 class FakePage:
     def __init__(self) -> None:
+        self.context = FakeBrowserContext()
         self.control_peeks: list[Mapping[str, object] | None] = []
         self.control_states: list[Mapping[str, object] | None] = []
         self.evaluations: list[tuple[str, object]] = []
@@ -393,3 +407,32 @@ class FakePresenter:
 
     def use_page(self, page: Page) -> None:
         self.calls.append(('use_page', page))
+
+
+class FakeClock:
+    def __init__(self) -> None:
+        self.waits_ms: list[float] = []
+
+    def wait_ms(self, ms: float) -> None:
+        self.waits_ms.append(ms)
+
+
+class FakeFrameRenderer:
+    def __init__(self, *, fps: int = 60) -> None:
+        self.fps = fps
+        self.retargets: list[object] = []
+        self.sinks: list[VideoSink] = []
+        self.stop_count = 0
+        self.waits_ms: list[float] = []
+
+    def retarget(self, page: object) -> None:
+        self.retargets.append(page)
+
+    def start(self, sink: VideoSink) -> None:
+        self.sinks.append(sink)
+
+    def stop(self) -> None:
+        self.stop_count += 1
+
+    def wait_ms(self, ms: float) -> None:
+        self.waits_ms.append(ms)

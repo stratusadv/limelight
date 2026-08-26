@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import pytest
 
-from typing_extensions import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from limelight.config import DEMO_MODE_NARRATE, DEMO_MODE_PRESENT, DemoConfig
 from limelight.overlay import Overlay
 from limelight.presenter import presenter_build
 from limelight.timing import DemoTiming
 
-from fakes import FakePage
+from fakes import FakeFrameRenderer, FakePage
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from limelight.frames import FrameRenderer
 
 
 def control_state(*, paused: bool = False, skip: bool = False, speed_factor: float = 1.0) -> dict[str, object]:
@@ -213,8 +215,9 @@ def test_present_config_installs_step_mode(tmp_path: Path) -> None:
 def test_video_mode_disables_controls(tmp_path: Path) -> None:
     page = FakePage()
     config = DemoConfig(mode=DEMO_MODE_NARRATE, video=True)
+    renderer = cast('FrameRenderer', FakeFrameRenderer())
 
-    presenter_build(page.as_page(), config, shot_directory=tmp_path / 'shots')
+    presenter_build(page.as_page(), config, shot_directory=tmp_path / 'shots', renderer=renderer)
 
     assert '"controls": false' in page.init_scripts[0]
 

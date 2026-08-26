@@ -432,9 +432,13 @@
         let xOvershoot = target.x + dx / distance * overshootPx;
         let yOvershoot = target.y + dy / distance * overshootPx;
         let settleStart = overshootPx > 0 ? 0.84 : 1;
-        let startedAt = performance.now();
+        let startedAt = null;
 
         let step = (now) => {
+            if (startedAt === null) {
+                startedAt = now;
+            }
+
             let t = Math.min(1, (now - startedAt) / duration);
             let x = target.x;
             let y = target.y;

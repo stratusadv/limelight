@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing_extensions import TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-    from typing_extensions import TypeVar
+    from typing import TypeVar
 
 
     T = TypeVar('T')

@@ -5,6 +5,7 @@ import pytest
 from pathlib import Path
 
 from limelight.video import (
+    ffmpeg_arguments_frames,
     ffmpeg_arguments_gif,
     ffmpeg_arguments_mp4,
     ffprobe_arguments_duration,
@@ -109,3 +110,22 @@ def test_gif_arguments_fps_rejected() -> None:
 def test_gif_arguments_width_rejected() -> None:
     with pytest.raises(ValueError, match='width'):
         ffmpeg_arguments_gif(Path('demo.webm'), Path('demo.gif'), width=0)
+
+
+def test_frames_arguments_pipe_pngs_into_h264() -> None:
+    arguments = ffmpeg_arguments_frames(Path('video.mp4'), fps=60)
+
+    assert arguments[:6] == ['-f', 'image2pipe', '-framerate', '60', '-i', '-']
+    assert '-crf' in arguments
+    assert arguments[arguments.index('-crf') + 1] == '14'
+    assert arguments[-1] == 'video.mp4'
+
+
+def test_frames_arguments_fps_rejected() -> None:
+    with pytest.raises(ValueError, match='fps'):
+        ffmpeg_arguments_frames(Path('video.mp4'), fps=0)
+
+
+def test_frames_arguments_crf_rejected() -> None:
+    with pytest.raises(ValueError, match='crf'):
+        ffmpeg_arguments_frames(Path('video.mp4'), fps=60, crf=99)

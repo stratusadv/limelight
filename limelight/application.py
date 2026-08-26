@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing_extensions import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from playwright.sync_api import Page
-    from typing_extensions import Callable
 
 
 @runtime_checkable

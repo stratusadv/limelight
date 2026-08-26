@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing_extensions import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-    from typing_extensions import Callable, Self
+    from collections.abc import Callable, Mapping
+    from typing import Self
 
 
 DIRECTION_DOWN = 'down'

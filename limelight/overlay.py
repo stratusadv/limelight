@@ -6,7 +6,7 @@ import time
 
 from dataclasses import dataclass
 from importlib.resources import files
-from typing_extensions import TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from playwright.sync_api import Error as PlaywrightError, TimeoutError as PlaywrightTimeoutError
 
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
     from playwright.sync_api import FloatRect, Locator, Page
 
+    from limelight.frames import FrameClock
     from limelight.ledger import LedgerRow
     from limelight.timing import DemoTiming
 
@@ -61,6 +62,7 @@ class Overlay:
         page: Page,
         timing: DemoTiming,
         *,
+        clock: FrameClock | None = None,
         controls: bool = False,
         speed_factor: float = 1.0,
         step_mode: bool = False,
@@ -74,6 +76,7 @@ class Overlay:
             message = f'speed_factor must be positive: {speed_factor}'
             raise ValueError(message)
 
+        self._clock = clock
         self._controls = controls
         self._page = page
         self._speed_factor = self._speed_factor_clamped(speed_factor)
@@ -145,13 +148,13 @@ class Overlay:
         if isinstance(result, int | float) and not isinstance(result, bool):
             move_ms = float(result)
 
-        self._page.wait_for_timeout(move_ms)
+        self._sleep(move_ms)
 
     def _cursor_pulse(self) -> None:
         pulse_ms = int(self._timing.scale(CURSOR_PULSE_MS) / self._live_speed_factor())
 
         self._call('cursorPulse')
-        self._page.wait_for_timeout(pulse_ms)
+        self._sleep(pulse_ms)
 
     def _ensure(self) -> None:
         argument = self._settings()
@@ -207,6 +210,14 @@ class Overlay:
         with contextlib.suppress(PlaywrightError):
             self._call('settle', {'ms': SETTLE_MS_MAX})
 
+    def _sleep(self, ms: float) -> None:
+        if self._clock is not None:
+            self._clock.wait_ms(ms)
+
+            return
+
+        self._page.wait_for_timeout(ms)
+
     def _speed_factor_clamped(self, speed_factor: float) -> float:
         if speed_factor < SPEED_FACTOR_LIVE_MIN:
             return SPEED_FACTOR_LIVE_MIN
@@ -235,6 +246,11 @@ class Overlay:
 
         return self._timing.step_ms
 
+    def _typed_by_frame(self, locator: Locator, value: str, delay_ms: float) -> None:
+        for character in value:
+            locator.press_sequentially(character)
+            self._sleep(delay_ms)
+
     def _typing_reproduces_value(self, locator: Locator) -> bool:
         input_type = ''
 
@@ -255,7 +271,7 @@ class Overlay:
         remaining_ms = float(self._timing.scale(ms))
 
         if not self._controls:
-            self._page.wait_for_timeout(remaining_ms / self._live_speed_factor())
+            self._sleep(remaining_ms / self._live_speed_factor())
 
             return
 
@@ -404,7 +420,11 @@ class Overlay:
         self._call('keyHudEnable')
 
         locator.fill('')
-        locator.press_sequentially(value, delay=delay_ms)
+
+        if self._clock is None:
+            locator.press_sequentially(value, delay=delay_ms)
+        else:
+            self._typed_by_frame(locator, value, delay_ms)
 
         self._call('keyHudDisable')
         self._input_drive_end()
@@ -497,7 +517,7 @@ class Overlay:
 
             self._call('cursorMove', argument)
             mouse.move(x_chunk, y_center, steps=SLIDE_MOUSE_STEP_COUNT)
-            self._page.wait_for_timeout(chunk_ms)
+            self._sleep(chunk_ms)
 
         mouse.up()
 

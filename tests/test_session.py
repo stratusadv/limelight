@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, cast, override
+
 from limelight.config import DEMO_MODE_NARRATE, DemoConfig
+from limelight.frames import renderer_register, renderer_unregister
 from limelight.navigator import Navigator
 from limelight.presenter import PresenterNarrated, PresenterSilent
 from limelight.session import DemoSession
 
-from fakes import FakeApplication, FakeLocator, FakePage, FakePresenter
+from fakes import FakeApplication, FakeFrameRenderer, FakeLocator, FakePage, FakePresenter
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from limelight.frames import FrameRenderer
 
 
 class RecordingNavigator(Navigator):
@@ -14,6 +22,12 @@ class RecordingNavigator(Navigator):
 
 class RecordingSession(DemoSession):
     navigator_class = RecordingNavigator
+
+
+class PreparingSession(DemoSession):
+    @override
+    def scenes_prepare(self) -> None:
+        self.prepared_navigator = self.nav
 
 
 def session_build(
@@ -142,17 +156,18 @@ def test_start_narrated_builds_narrated_presenter() -> None:
     assert isinstance(session.presenter, PresenterNarrated)
 
 
-def test_start_honors_injected_presenter() -> None:
+def test_init_honors_injected_presenter() -> None:
     presenter = FakePresenter()
 
-    session = DemoSession.start(
-        FakePage().as_page(),
-        FakeApplication(),
-        shot_directory_name='demo',
-        presenter=presenter,
-    )
+    session = DemoSession(FakePage().as_page(), FakeApplication(), presenter=presenter)
 
     assert session.presenter is presenter
+
+
+def test_scenes_prepare_runs_after_the_navigator_is_built() -> None:
+    session = PreparingSession(FakePage().as_page(), FakeApplication(), presenter=FakePresenter())
+
+    assert session.prepared_navigator is session.nav
 
 
 def test_subclass_navigator_class_is_used() -> None:
@@ -178,3 +193,24 @@ def test_use_page_disables_window_print_on_new_page() -> None:
     session.use_page(page_second.as_page())
 
     assert page_second.init_scripts == ['window.print = () => {};']
+
+
+def test_start_hands_the_registered_renderer_to_the_presenter(tmp_path: Path) -> None:
+    page = FakePage()
+    renderer = FakeFrameRenderer()
+    config = DemoConfig(mode=DEMO_MODE_NARRATE, video=True)
+
+    renderer_register(page.as_page(), cast('FrameRenderer', renderer))
+
+    try:
+        session = DemoSession.start(
+            page.as_page(),
+            FakeApplication(),
+            shot_directory_name=str(tmp_path / 'demo'),
+            config=config,
+        )
+    finally:
+        renderer_unregister(page.as_page())
+
+    assert isinstance(session.presenter, PresenterNarrated)
+    assert len(renderer.sinks) == 1

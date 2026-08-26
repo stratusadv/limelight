@@ -5,7 +5,7 @@ import time
 import pytest
 
 from pathlib import Path
-from typing_extensions import TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from playwright.sync_api import sync_playwright
 

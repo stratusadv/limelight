@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing_extensions import TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from limelight.video import ffmpeg_run
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
-    from typing_extensions import Callable
 
 
 VOICEOVER_EVENTS = ('narrate', 'title_card')

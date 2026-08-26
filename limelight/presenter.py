@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import contextlib
 
-from typing_extensions import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from playwright.sync_api import Error as PlaywrightError
 
 from limelight.camera import Camera
+from limelight.frames import VIDEO_FILE_NAME, VideoSink
 from limelight.gestures import slide_to_end
 from limelight.overlay import BEAT_MS_DEFAULT, Overlay
 from limelight.transcript import Transcript
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
     from playwright.sync_api import Locator, Page
 
     from limelight.config import DemoConfig
+    from limelight.frames import FrameRenderer
     from limelight.ledger import LedgerRow
     from limelight.theme import Theme
 
@@ -104,9 +106,17 @@ class Presenter(Protocol):
 
 
 class PresenterNarrated:
-    def __init__(self, *, camera: Camera, overlay: Overlay, transcript: Transcript | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        camera: Camera,
+        overlay: Overlay,
+        renderer: FrameRenderer | None = None,
+        transcript: Transcript | None = None,
+    ) -> None:
         self._camera = camera
         self._overlay = overlay
+        self._renderer = renderer
         self._transcript = transcript
 
     def _locator_label(self, locator: Locator) -> str:
@@ -271,6 +281,9 @@ class PresenterNarrated:
         self._camera.use_page(page)
         self._overlay.use_page(page)
 
+        if self._renderer is not None:
+            self._renderer.retarget(page)
+
 
 class PresenterSilent:
     def beat(self, ms: int = BEAT_MS_DEFAULT) -> None:
@@ -365,21 +378,33 @@ def presenter_build(
     config: DemoConfig,
     *,
     shot_directory: Path,
+    renderer: FrameRenderer | None = None,
     theme: Theme | None = None,
 ) -> Presenter:
-    if config.narrated:
-        camera = Camera(page, shot_directory, enabled=config.shots)
-        transcript = Transcript(shot_directory / TRANSCRIPT_FILE_NAME)
+    if not config.narrated:
+        return PresenterSilent()
 
-        overlay = Overlay(
-            page,
-            config.timing,
-            controls=not config.video,
-            speed_factor=config.speed_factor,
-            step_mode=config.present,
-            theme=theme,
-        )
+    camera = Camera(page, shot_directory, enabled=config.shots)
+    transcript = Transcript(shot_directory / TRANSCRIPT_FILE_NAME)
+    clock = None
 
-        return PresenterNarrated(camera=camera, overlay=overlay, transcript=transcript)
+    if config.video:
+        if renderer is None:
+            message = 'video mode needs a FrameRenderer; the pytest plugin registers one for every page'
+            raise ValueError(message)
 
-    return PresenterSilent()
+        renderer.start(VideoSink(shot_directory / VIDEO_FILE_NAME, fps=renderer.fps))
+
+        clock = renderer
+
+    overlay = Overlay(
+        page,
+        config.timing,
+        clock=clock,
+        controls=not config.video,
+        speed_factor=config.speed_factor,
+        step_mode=config.present,
+        theme=theme,
+    )
+
+    return PresenterNarrated(camera=camera, overlay=overlay, renderer=clock, transcript=transcript)

@@ -3,12 +3,11 @@ from __future__ import annotations
 import json
 import time
 
-from typing_extensions import TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
     from pathlib import Path
-    from typing_extensions import Callable
 
 
 EVENT_KEYS_RESERVED = frozenset(('event', 'offset_ms'))

@@ -238,11 +238,10 @@ wheels = [
 
 [[package]]
 name = "limelight"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "playwright" },
-    { name = "typing-extensions" },
 ]
 
 [package.optional-dependencies]
@@ -274,7 +273,6 @@ requires-dist = [
     { name = "pytest-playwright", marker = "extra == 'pytest'", specifier = ">=0.7" },
     { name = "ruff", marker = "extra == 'development'", specifier = ">=0.16" },
     { name = "ty", marker = "extra == 'development'", specifier = ">=0.0.69" },
-    { name = "typing-extensions", specifier = ">=4.12" },
 ]
 provides-extras = ["django", "pytest", "development"]
 
