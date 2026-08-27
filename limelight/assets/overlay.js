@@ -229,6 +229,34 @@
             from { transform: scale(0.5); opacity: 1; }
             to { transform: scale(2.4); opacity: 0; }
         }
+        #limelight-select {
+            position: fixed;
+            z-index: 2147483645;
+            pointer-events: none;
+            overflow-y: auto;
+            scrollbar-width: none;
+            max-height: 40vh;
+            border-radius: 10px;
+            background: rgba(252, 253, 255, 0.98);
+            border: 1px solid rgba(8, 11, 18, 0.18);
+            box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+            font-family: var(--limelight-font);
+            opacity: 0;
+            transition: opacity .15s ease;
+        }
+        #limelight-select.show { opacity: 1; }
+        #limelight-select .option {
+            padding: 9px 14px;
+            font-size: 15px;
+            color: #1c2333;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        #limelight-select .option.chosen {
+            background: var(--limelight-accent);
+            color: #ffffff;
+        }
         #limelight-keys {
             position: fixed;
             left: 50%;
@@ -311,6 +339,19 @@
     `;
 
     document.head.appendChild(style);
+
+    requestAnimationFrame((stampFirst) => {
+        requestAnimationFrame((stampSecond) => {
+            if (stampSecond - stampFirst <= 0) {
+                style.textContent += `
+                    [id^="limelight-"], [id^="limelight-"]::after {
+                        transition: none !important;
+                        animation: none !important;
+                    }
+                `;
+            }
+        });
+    });
 
     let elementBuild = (id) => {
         let node = document.getElementById(id);
@@ -432,14 +473,23 @@
         let xOvershoot = target.x + dx / distance * overshootPx;
         let yOvershoot = target.y + dy / distance * overshootPx;
         let settleStart = overshootPx > 0 ? 0.84 : 1;
-        let startedAt = null;
+        let elapsed = 0;
+        let stampPrevious = null;
 
         let step = (now) => {
-            if (startedAt === null) {
-                startedAt = now;
+            if (stampPrevious !== null) {
+                let delta = now - stampPrevious;
+
+                if (delta <= 0) {
+                    delta = 1000 / 60;
+                }
+
+                elapsed += delta;
             }
 
-            let t = Math.min(1, (now - startedAt) / duration);
+            stampPrevious = now;
+
+            let t = Math.min(1, elapsed / duration);
             let x = target.x;
             let y = target.y;
 
@@ -562,6 +612,22 @@
             return;
         }
     };
+
+    let cursorPositionLoad = () => {
+        let raw = sessionRead('limelight-cursor-position');
+
+        if (raw === null) {
+            return null;
+        }
+
+        let parts = raw.split(',');
+        let x = Number(parts[0]);
+        let y = Number(parts[1]);
+
+        return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+    };
+
+    let cursorPositionStore = (x, y) => sessionWrite('limelight-cursor-position', `${x},${y}`);
 
     let pausedLoad = () => sessionRead('limelight-paused') === '1';
     let pausedStore = (paused) => sessionWrite('limelight-paused', paused ? '1' : '0');
@@ -800,6 +866,49 @@
                 bar.classList.remove('hidden');
             }
         },
+        selectHide: () => {
+            elementRemove('limelight-select');
+        },
+        selectMark: (data) => {
+            let panel = document.getElementById('limelight-select');
+
+            if (panel === null) {
+                return;
+            }
+
+            let chosen = panel.children[data.index];
+
+            if (chosen !== undefined) {
+                chosen.classList.add('chosen');
+            }
+        },
+        selectShow: (data) => {
+            let panel = elementBuild('limelight-select');
+
+            panel.innerHTML = data.options
+                .map((label) => `<div class="option">${textEscape(label)}</div>`)
+                .join('');
+
+            panel.style.left = `${data.box.x}px`;
+            panel.style.top = '0px';
+            panel.style.minWidth = `${Math.max(data.box.width, 160)}px`;
+
+            let heightPanel = panel.offsetHeight;
+            let topBelow = data.box.y + data.box.height + 4;
+            let topAbove = Math.max(8, data.box.y - 4 - heightPanel);
+            let top = topBelow + heightPanel <= window.innerHeight - 8 ? topBelow : topAbove;
+
+            panel.style.top = `${top}px`;
+
+            let chosen = panel.children[data.index];
+
+            panel.scrollTop = Math.max(0, chosen.offsetTop - panel.clientHeight / 2 + chosen.offsetHeight / 2);
+            elementShow(panel);
+
+            let rect = chosen.getBoundingClientRect();
+
+            return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+        },
         settle: (data) => {
             let deadlineMs = data && data.ms ? data.ms : 2000;
             let expired = new Promise((resolve) => setTimeout(resolve, deadlineMs));
@@ -820,15 +929,18 @@
             let cursor = existing !== null ? existing : elementBuild('limelight-cursor');
 
             if (existing === null) {
-                cursor.style.left = `${data.x}px`;
-                cursor.style.top = `${data.y}px`;
-                cursor.getBoundingClientRect();
-                elementShow(cursor);
+                let origin = cursorPositionLoad() ?? {
+                    x: window.innerWidth / 2,
+                    y: window.innerHeight / 2,
+                };
 
-                return 0;
+                cursor.style.left = `${origin.x}px`;
+                cursor.style.top = `${origin.y}px`;
+                cursor.getBoundingClientRect();
             }
 
             elementShow(cursor);
+            cursorPositionStore(data.x, data.y);
 
             let xStart = parseFloat(cursor.style.left) || 0;
             let yStart = parseFloat(cursor.style.top) || 0;
@@ -848,7 +960,7 @@
             }
 
             let paced = data.ms * (0.44 + 0.032 * Math.sqrt(distance));
-            let duration = Math.round(Math.min(data.ms * 2, Math.max(data.ms * 0.35, paced)));
+            let duration = Math.round(Math.min(data.ms * 2, Math.max(data.ms * 0.5, paced)));
             let bowSign = (data.x - xStart) * (data.y - yStart) >= 0 ? -1 : 1;
             let bow = bowSign * Math.min(distance * 0.12, 48);
             let overshootPx = distance >= 80 ? Math.min(distance * 0.04, 10) : 0;
@@ -869,6 +981,13 @@
         },
         cursorRemove: () => {
             elementRemove('limelight-cursor');
+        },
+        cursorShow: () => {
+            let cursor = document.getElementById('limelight-cursor');
+
+            if (cursor !== null) {
+                elementShow(cursor);
+            }
         },
         delta: (data) => {
             let card = elementBuild('limelight-delta');

@@ -239,6 +239,8 @@ class FrameRenderer:
             ticks = _ticks_seeded(target_id, self._interval_ms)
             png_last = b''
 
+            navigated = False
+
             while not self._stop.is_set():
                 if self._target_id != target_id:
                     await session.detach()
@@ -248,9 +250,15 @@ class FrameRenderer:
                     ticks = _ticks_seeded(target_id, self._interval_ms)
 
                 if navigation.in_progress:
+                    navigated = True
+
                     await asyncio.sleep(NAVIGATION_POLL_SECONDS)
 
                     continue
+
+                if navigated:
+                    navigated = False
+                    ticks = max(ticks + self._interval_ms, _ticks_now())
 
                 await _real_time_awaited(ticks)
 

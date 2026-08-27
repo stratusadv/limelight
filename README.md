@@ -76,7 +76,7 @@ Render the narrated run to video, then export the walkthrough and subtitles:
 
 ```
 DEMO_MODE=narrate DEMO_VIDEO=1 pytest -k order_approval_demo
-limelight-render test-results/order-approval --title "Order Approval"
+limelight-render .demos/order-approval --title "Order Approval"
 ```
 
 `DEMO_VIDEO` does not record the screen. The browser runs headless under Chrome's begin-frame control, and limelight advances the compositor one frame at a time, screenshotting each one and piping it into ffmpeg. Every hold, glide and transition is measured in frames rather than wall time, so `video.mp4` comes out at 3840x2160 and 60 fps with one distinct frame per interval no matter how slow the machine is. Frames leave Chrome as JPEG at quality 100 (a lossless PNG takes four times longer to encode at 4K and the H.264 output is 4:2:0 either way); `FrameRenderer` takes `screenshot_format='png'` when the frames themselves are the deliverable. It needs `ffmpeg` on the PATH. `limelight-render` adds the walkthrough, chapters and subtitles beside it; pass `--subtitles` to burn the captions into the picture.
@@ -159,7 +159,7 @@ class CompanyApplication(DjangoApplication):
 
 `login` is inherited and needs no reimplementation. `with_user` builds `type(self)`, so a subclass that adds no constructor state inherits it too; the override above exists only because `company` has to survive the user switch.
 
-`Modal` and `SearchAndSelect` read their selectors from class attributes, so different markup is a subclass rather than a rewrite:
+The components take the `DemoSession` first, so every open, choice, and slide runs through the presenter: narrated runs glide the cursor and press the mouse; silent runs stay plain Playwright. `Modal` and `SearchAndSelect` read their selectors from class attributes, so different markup is a subclass rather than a rewrite:
 
 | Component | Attribute | Default |
 |---|---|---|

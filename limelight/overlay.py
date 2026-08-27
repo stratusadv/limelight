@@ -30,6 +30,23 @@ INPUT_TYPES_UNTYPEABLE = ('color', 'date', 'datetime-local', 'month', 'range', '
 INPUT_TYPE_SCRIPT = "element => element.tagName === 'INPUT' ? (element.type || 'text').toLowerCase() : ''"
 INPUT_TYPE_TIMEOUT_MS = 2000
 OVERLAY_JAVASCRIPT = files('limelight').joinpath('assets/overlay.js').read_text(encoding='utf-8')
+POINT_HIT_SCRIPT = (
+    '(element, point) => {'
+    ' const found = document.elementFromPoint(point.x, point.y);'
+    ' if (found === null) return false;'
+    ' if (element !== found && !element.contains(found)) return false;'
+    " const control = found.closest('button, input, select, textarea');"
+    ' return control === null || control.disabled !== true;'
+    ' }'
+)
+POINT_HIT_TIMEOUT_MS = 2000
+SELECT_DROPDOWN_BEAT_MS = 250
+SELECT_OPTION_LABELS_SCRIPT = (
+    "element => element.tagName === 'SELECT'"
+    ' ? Array.from(element.options).map(option => option.label)'
+    ' : []'
+)
+SELECT_OPTION_LABELS_TIMEOUT_MS = 2000
 SETTLE_MS_MAX = 2000
 SLIDE_CHUNK_COUNT = 8
 SLIDE_MOUSE_STEP_COUNT = 3
@@ -128,20 +145,22 @@ class Overlay:
             speed_factor=float(state['speedFactor']),
         )
 
-    def _cursor_glide(self, locator: Locator) -> None:
+    def _cursor_glide(self, locator: Locator) -> tuple[float, float] | None:
         box = self._box_settled(locator)
 
         if box is None:
-            return
+            return None
 
+        x_center = box['x'] + box['width'] / 2
+        y_center = box['y'] + box['height'] / 2
+
+        self._cursor_travel(x_center, y_center)
+
+        return (x_center, y_center)
+
+    def _cursor_travel(self, x: float, y: float) -> None:
         reference_ms = int(self._timing.scale(CURSOR_MOVE_MS) / self._live_speed_factor())
-
-        argument = {
-            'x': box['x'] + box['width'] / 2,
-            'y': box['y'] + box['height'] / 2,
-            'ms': reference_ms,
-        }
-
+        argument = {'x': x, 'y': y, 'ms': reference_ms}
         result = self._call('cursorMove', argument)
         move_ms = float(reference_ms)
 
@@ -189,6 +208,86 @@ class Overlay:
             locator.scroll_into_view_if_needed(timeout=SPOT_SCROLL_TIMEOUT_MS)
 
         self._wait(SPOT_SCROLL_SETTLE_MS, gated=False)
+
+    def _checkbox_drive(
+        self,
+        locator: Locator,
+        point: tuple[float, float] | None,
+        *,
+        checked_target: bool,
+    ) -> None:
+        if self._checked_state(locator) is checked_target:
+            return
+
+        if point is not None and self._point_hits(locator, point):
+            self._mouse_click(point)
+
+        if self._checked_state(locator) is checked_target:
+            return
+
+        if checked_target:
+            locator.check()
+        else:
+            locator.uncheck()
+
+    def _checked_state(self, locator: Locator) -> bool | None:
+        state = None
+
+        with contextlib.suppress(PlaywrightError):
+            state = locator.is_checked()
+
+        return state
+
+    def _mouse_click(self, point: tuple[float, float]) -> None:
+        mouse = self._page.mouse
+
+        mouse.move(point[0], point[1])
+        mouse.down()
+        mouse.up()
+
+    def _point_hits(self, locator: Locator, point: tuple[float, float]) -> bool:
+        argument = {'x': point[0], 'y': point[1]}
+        hits = False
+
+        with contextlib.suppress(PlaywrightError):
+            hits = bool(locator.evaluate(POINT_HIT_SCRIPT, argument, timeout=POINT_HIT_TIMEOUT_MS))
+
+        return hits
+
+    def _select_dropdown_walk(self, locator: Locator, labels: list[str], option_label: str) -> None:
+        box = locator.bounding_box()
+
+        if box is None:
+            return
+
+        index = labels.index(option_label)
+        argument = {'box': box, 'options': labels, 'index': index}
+        target = self._call('selectShow', argument)
+
+        self._wait(SELECT_DROPDOWN_BEAT_MS, gated=False)
+
+        if isinstance(target, dict):
+            self._cursor_travel(float(target['x']), float(target['y']))
+
+            mark_argument = {'index': index}
+            self._call('selectMark', mark_argument)
+            self._cursor_pulse()
+
+        self._wait(SELECT_DROPDOWN_BEAT_MS, gated=False)
+        self._call('selectHide')
+
+    def _select_option_labels(self, locator: Locator) -> list[str]:
+        labels: list[str] = []
+
+        with contextlib.suppress(PlaywrightError):
+            raw = locator.evaluate(
+                SELECT_OPTION_LABELS_SCRIPT,
+                timeout=SELECT_OPTION_LABELS_TIMEOUT_MS,
+            )
+
+            labels = [str(label) for label in raw]
+
+        return labels
 
     def _input_drive_begin(self, ms: float) -> None:
         argument = {'ms': ms + INPUT_DRIVE_SLACK_MS}
@@ -352,10 +451,11 @@ class Overlay:
         self._ensure()
         self._settle()
         self._scroll(locator)
-        self._cursor_glide(locator)
-        self._cursor_pulse()
 
-        locator.check()
+        point = self._cursor_glide(locator)
+
+        self._cursor_pulse()
+        self._checkbox_drive(locator, point, checked_target=True)
 
     def clear(self) -> None:
         self._call('spotClear')
@@ -369,10 +469,20 @@ class Overlay:
         self._ensure()
         self._settle()
         self._scroll(locator)
-        self._cursor_glide(locator)
+
+        point = self._cursor_glide(locator)
+
         self._cursor_pulse()
 
-        locator.click(force=force)
+        if point is None:
+            locator.click(force=force)
+
+            return
+
+        if force or self._point_hits(locator, point):
+            self._mouse_click(point)
+        else:
+            locator.click(force=force)
 
     def control_hide(self) -> None:
         self._call('controlHide')
@@ -382,6 +492,9 @@ class Overlay:
 
     def cursor_hide(self) -> None:
         self._call('cursorHide')
+
+    def cursor_show(self) -> None:
+        self._call('cursorShow')
 
     def delta_card(
         self,
@@ -436,9 +549,13 @@ class Overlay:
         self._ensure()
         self._settle()
         self._scroll(locator)
-        self._cursor_glide(locator)
 
-        locator.hover()
+        point = self._cursor_glide(locator)
+
+        if point is not None and self._point_hits(locator, point):
+            self._page.mouse.move(point[0], point[1])
+        else:
+            locator.hover()
 
     def narrate(
         self,
@@ -478,8 +595,16 @@ class Overlay:
         self._ensure()
         self._settle()
         self._scroll(locator)
-        self._cursor_glide(locator)
+
+        point = self._cursor_glide(locator)
+
         self._cursor_pulse()
+
+        if point is not None:
+            labels = self._select_option_labels(locator)
+
+            if option_label in labels:
+                self._select_dropdown_walk(locator, labels, option_label)
 
         locator.select_option(label=option_label)
 
@@ -569,11 +694,13 @@ class Overlay:
 
     def uncheck(self, locator: Locator) -> None:
         self._ensure()
+        self._settle()
         self._scroll(locator)
-        self._cursor_glide(locator)
-        self._cursor_pulse()
 
-        locator.uncheck()
+        point = self._cursor_glide(locator)
+
+        self._cursor_pulse()
+        self._checkbox_drive(locator, point, checked_target=False)
 
     def use_page(self, page: Page) -> None:
         self._install(page)

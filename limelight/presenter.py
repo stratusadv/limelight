@@ -226,6 +226,7 @@ class PresenterNarrated:
         path = self._camera.shot(name)
 
         self._overlay.control_show()
+        self._overlay.cursor_show()
 
         if path is not None:
             detail = {'name': name, 'file': path.name}

@@ -39,6 +39,33 @@
 - `Modal` and `SearchAndSelect` read their selectors from class attributes (`root_selector`, `choice_selector`,
   `dropdown_selector`, `search_placeholder`, `toggle_selector`), so different markup is a subclass rather than a
   rewrite.
+- Demo artifacts (screenshots, transcript, video) land under `.demos/` instead of `test-results/`.
+  pytest-playwright clears `test-results/` at session start, so any concurrent pytest run used to delete a
+  recording in progress; `.demos/` belongs to limelight alone. Breaking for anything that read the old path.
+- Narrated clicks, checks, unchecks, and hovers are driven by the real mouse at the exact point the animated
+  cursor lands on, so the visible cursor and the dispatched events can no longer disagree. A hit test guards the
+  press: when another element covers the point, the action falls back to the locator so nothing silently
+  misfires. `force=True` presses the mouse without the hit test.
+- `select` renders the dropdown the native popup never shows: the overlay draws the option list under the field,
+  the cursor glides to the chosen option, the option highlights, and only then does the value change. Fields
+  that are not a `<select>`, or an option the field does not carry, fall back to the plain `select_option`.
+- `shot` shows the cursor again after hiding it for the screenshot; it used to stay invisible until the next
+  glide.
+- Video mode keeps animating after mid-demo navigations. The frame clock advanced only in video time while
+  the wall clock ran ahead, so once the gap outgrew the 60s lead, any newly navigated document received frame
+  times below its own timeline zero: `requestAnimationFrame` timestamps froze, and every cursor glide, overlay
+  fade, and CSS transition on that page rendered as invisible or stuck while screenshots kept flowing. The
+  renderer now re-pegs its frame clock to real time after each navigation, the cursor glide advances by frame
+  count when timestamps stall, and the overlay drops its transitions entirely on a page whose clock is frozen.
+- The cursor position survives navigation: on a fresh page the cursor glides in from where it was on the page
+  before (or from the viewport centre on first appearance) instead of materialising on its target, so the first
+  click after every page load is a visible movement. Short hops also pace no faster than half the reference
+  duration, so a click on an adjacent control still reads as travel.
+- Breaking: `Modal`, `SearchAndSelect`, and `SlideButton` take the `DemoSession` first (`Modal(demo)`,
+  `SearchAndSelect(demo, root)`, `SearchAndSelect.within(demo, container)`, `SlideButton(demo)`) and route every
+  action through the presenter, so component-driven modals and dropdowns are opened by the visible cursor
+  instead of by invisible programmatic clicks.
+
 
 ## 0.1.0
 

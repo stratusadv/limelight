@@ -88,9 +88,15 @@ def test_cursor_move_duration_scales_with_distance(demo_page: tuple[Page, Overla
     page, overlay = demo_page
 
     overlay_install(page, overlay, PAGE_HTML)
-    page.evaluate('() => window.__limelight.cursorMove({x: 10, y: 10, ms: 500})')
+
+    duration_arrive = page.evaluate('() => window.__limelight.cursorMove({x: 10, y: 10, ms: 500})')
+
+    page.wait_for_timeout(float(duration_arrive) + 100)
 
     duration_short = page.evaluate('() => window.__limelight.cursorMove({x: 40, y: 10, ms: 500})')
+
+    page.wait_for_timeout(float(duration_short) + 100)
+
     duration_long = page.evaluate('() => window.__limelight.cursorMove({x: 1200, y: 600, ms: 500})')
 
     assert isinstance(duration_short, int)

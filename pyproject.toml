@@ -4,7 +4,7 @@ build-backend = 'uv_build'
 
 [project]
 name = "limelight"
-version = "0.2.0"
+version = "0.3.0"
 description = "Narrated Playwright demos that double as silent end-to-end tests"
 readme = "README.md"
 license = "MIT"

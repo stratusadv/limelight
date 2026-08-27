@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from limelight.theme import Theme
 
 
-SHOT_DIRECTORY_ROOT = 'test-results'
+SHOT_DIRECTORY_ROOT = '.demos'
 
 
 class DemoSession:

@@ -132,7 +132,38 @@ def test_click_glides_cursor_then_clicks() -> None:
 
     assert move_arguments == [{'x': 120.0, 'y': 210.0, 'ms': 500}]
     assert len(pulse_expressions) == 1
+    assert locator.click_count == 0
+    assert page.mouse.actions == [('move', 120.0, 210.0, 1), ('down',), ('up',)]
+
+
+def test_click_falls_back_to_the_locator_when_the_point_misses() -> None:
+    page = FakePage()
+    overlay = overlay_build(page)
+
+    box: Mapping[str, float] = {'x': 100, 'y': 200, 'width': 40, 'height': 20}
+    boxes = [box]
+    locator = FakeLocator(boxes=boxes)
+    locator.point_hits = False
+
+    overlay.click(locator.as_locator())
+
     assert locator.click_count == 1
+    assert page.mouse.actions == []
+
+
+def test_click_forced_presses_the_mouse_without_a_hit_test() -> None:
+    page = FakePage()
+    overlay = overlay_build(page)
+
+    box: Mapping[str, float] = {'x': 100, 'y': 200, 'width': 40, 'height': 20}
+    boxes = [box]
+    locator = FakeLocator(boxes=boxes)
+    locator.point_hits = False
+
+    overlay.click(locator.as_locator(), force=True)
+
+    assert locator.click_count == 0
+    assert page.mouse.actions == [('move', 120.0, 210.0, 1), ('down',), ('up',)]
 
 
 def test_click_scrolls_target_into_view_first() -> None:
@@ -169,6 +200,36 @@ def test_check_glides_then_checks() -> None:
     assert locator.click_count == 0
 
 
+def test_check_presses_the_mouse_on_an_unchecked_box() -> None:
+    page = FakePage()
+    overlay = overlay_build(page)
+
+    box: Mapping[str, float] = {'x': 0, 'y': 0, 'width': 10, 'height': 10}
+    boxes = [box]
+    locator = FakeLocator(boxes=boxes)
+    locator.checked = False
+
+    overlay.check(locator.as_locator())
+
+    assert page.mouse.actions == [('move', 5.0, 5.0, 1), ('down',), ('up',)]
+    assert locator.check_count == 1
+
+
+def test_check_skips_a_box_already_checked() -> None:
+    page = FakePage()
+    overlay = overlay_build(page)
+
+    box: Mapping[str, float] = {'x': 0, 'y': 0, 'width': 10, 'height': 10}
+    boxes = [box]
+    locator = FakeLocator(boxes=boxes)
+    locator.checked = True
+
+    overlay.check(locator.as_locator())
+
+    assert page.mouse.actions == []
+    assert locator.check_count == 0
+
+
 def test_uncheck_glides_then_unchecks() -> None:
     page = FakePage()
     overlay = overlay_build(page)
@@ -196,7 +257,23 @@ def test_hover_glides_without_pulse() -> None:
     ]
 
     assert pulse_expressions == []
+    assert locator.hover_count == 0
+    assert page.mouse.actions == [('move', 5.0, 5.0, 1)]
+
+
+def test_hover_falls_back_to_the_locator_when_the_point_misses() -> None:
+    page = FakePage()
+    overlay = overlay_build(page)
+
+    box: Mapping[str, float] = {'x': 0, 'y': 0, 'width': 10, 'height': 10}
+    boxes = [box]
+    locator = FakeLocator(boxes=boxes)
+    locator.point_hits = False
+
+    overlay.hover(locator.as_locator())
+
     assert locator.hover_count == 1
+    assert page.mouse.actions == []
 
 
 def test_press_flashes_key_then_presses() -> None:
@@ -292,7 +369,7 @@ def test_fill_clicks_then_clears_then_types() -> None:
 
     overlay.fill(locator.as_locator(), 'hello')
 
-    assert locator.click_count == 1
+    assert page.mouse.actions == [('move', 5.0, 5.0, 1), ('down',), ('up',)]
     assert locator.fill_values == ['']
     assert locator.typed_sequences == [('hello', 55.0)]
 
@@ -308,7 +385,7 @@ def test_fill_sets_untypeable_inputs_directly() -> None:
 
     overlay.fill(locator.as_locator(), '2026-08-02')
 
-    assert locator.click_count == 1
+    assert page.mouse.actions == [('move', 5.0, 5.0, 1), ('down',), ('up',)]
     assert locator.fill_values == ['2026-08-02']
     assert locator.typed_sequences == []
 
@@ -343,6 +420,62 @@ def test_select_pulses_then_selects() -> None:
     assert len(pulse_expressions) == 1
     assert locator.select_labels == ['Approved']
     assert locator.click_count == 0
+
+
+def test_select_walks_a_rendered_dropdown_to_the_option() -> None:
+    page = FakePage()
+    overlay = overlay_build(page)
+
+    box: Mapping[str, float] = {'x': 0, 'y': 0, 'width': 10, 'height': 10}
+    boxes = [box]
+    locator = FakeLocator(boxes=boxes)
+    locator.option_labels = ['Draft', 'Approved', 'Rejected']
+
+    overlay.select(locator.as_locator(), 'Approved')
+
+    show_arguments = [
+        argument
+        for expression, argument in page.evaluations
+        if 'window.__limelight.selectShow(' in expression
+    ]
+    move_arguments = [
+        argument
+        for expression, argument in page.evaluations
+        if 'window.__limelight.cursorMove(' in expression
+    ]
+    hide_expressions = [
+        expression
+        for expression, _ in page.evaluations
+        if 'window.__limelight.selectHide(' in expression
+    ]
+
+    assert show_arguments == [
+        {'box': box, 'options': ['Draft', 'Approved', 'Rejected'], 'index': 1},
+    ]
+    assert move_arguments[-1] == {'x': 30.0, 'y': 60.0, 'ms': 500}
+    assert len(hide_expressions) == 1
+    assert locator.select_labels == ['Approved']
+
+
+def test_select_without_the_option_label_skips_the_dropdown() -> None:
+    page = FakePage()
+    overlay = overlay_build(page)
+
+    box: Mapping[str, float] = {'x': 0, 'y': 0, 'width': 10, 'height': 10}
+    boxes = [box]
+    locator = FakeLocator(boxes=boxes)
+    locator.option_labels = ['Draft']
+
+    overlay.select(locator.as_locator(), 'Approved')
+
+    show_expressions = [
+        expression
+        for expression, _ in page.evaluations
+        if 'window.__limelight.selectShow(' in expression
+    ]
+
+    assert show_expressions == []
+    assert locator.select_labels == ['Approved']
 
 
 def test_javascript_asset_defines_cursor_and_peek() -> None:

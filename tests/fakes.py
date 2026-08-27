@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Self, cast
 
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import Error as PlaywrightError, TimeoutError as PlaywrightTimeoutError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -66,6 +66,7 @@ class FakeLocator:
         self.children: list[FakeLocator] = []
         self.click_count = 0
         self.click_forces: list[bool] = []
+        self.checked: bool | None = None
         self.evaluate_error: Exception | None = None
         self.evaluate_timeouts: list[float | None] = []
         self.fill_values: list[str] = []
@@ -75,8 +76,10 @@ class FakeLocator:
         self.hover_count = 0
         self.input_type = 'text'
         self.label = ''
+        self.option_labels: list[str] = []
         self.owner_page = FakePage()
         self.placeholder_queries: list[str] = []
+        self.point_hits = True
         self.pressed_keys: list[str] = []
         self.scroll_timeouts: list[int] = []
         self.select_labels: list[str] = []
@@ -121,11 +124,23 @@ class FakeLocator:
         self.click_count += 1
         self.click_forces.append(force)
 
-    def evaluate(self, expression: str, *, timeout: float | None = None) -> object:
+    def evaluate(
+        self,
+        expression: str,
+        argument: object = None,
+        *,
+        timeout: float | None = None,
+    ) -> object:
         self.evaluate_timeouts.append(timeout)
 
         if self.evaluate_error is not None:
             raise self.evaluate_error
+
+        if 'elementFromPoint' in expression:
+            return self.point_hits
+
+        if 'options' in expression:
+            return self.option_labels
 
         if 'tagName' in expression:
             return self.input_type
@@ -162,6 +177,13 @@ class FakeLocator:
     def hover(self) -> None:
         self.hover_count += 1
 
+    def is_checked(self) -> bool:
+        if self.checked is None:
+            message = 'not a checkbox'
+            raise PlaywrightError(message)
+
+        return self.checked
+
     def locator(self, selector: str) -> FakeLocator:
         self.selector_queries.append(selector)
 
@@ -182,6 +204,33 @@ class FakeLocator:
 
     def uncheck(self) -> None:
         self.uncheck_count += 1
+
+
+class FakeDemo:
+    def __init__(self, page: FakePage | None = None) -> None:
+        self.clicked: list[tuple[object, bool]] = []
+        self.filled: list[tuple[object, str]] = []
+        self.owner_page = page if page is not None else FakePage()
+        self.slid: list[tuple[object, object]] = []
+
+    @property
+    def page(self) -> Page:
+        return self.owner_page.as_page()
+
+    def as_session(self) -> object:
+        return self
+
+    def click(self, locator: object, *, force: bool = False) -> None:
+        click = (locator, force)
+        self.clicked.append(click)
+
+    def fill(self, locator: object, value: str) -> None:
+        fill = (locator, value)
+        self.filled.append(fill)
+
+    def slide(self, *, track: object, thumb: object) -> None:
+        slide = (track, thumb)
+        self.slid.append(slide)
 
 
 class FakeMouse:
@@ -249,6 +298,9 @@ class FakePage:
     def evaluate(self, expression: str, argument: object = None) -> object:
         evaluation = (expression, argument)
         self.evaluations.append(evaluation)
+
+        if 'selectShow(' in expression:
+            return {'x': 30.0, 'y': 60.0}
 
         if 'controlPeek()' in expression:
             return self._control_peek_next()
