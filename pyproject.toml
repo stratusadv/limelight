@@ -1,5 +1,5 @@
 [build-system]
-requires = ['uv_build>=0.7.13,<0.8']
+requires = ['uv_build>=0.12.7,<0.13']
 build-backend = 'uv_build'
 
 [project]
@@ -23,12 +23,12 @@ dependencies = [
 ]
 
 [project.scripts]
-limelight-export = "limelight.export:main"
-limelight-render = "limelight.render:main"
+limelight-render = "limelight.export.cli:main"
 
 [project.optional-dependencies]
 django = [
-    "django>=5.0",
+    "django>=5.2",
+    "pytest-django>=4.9",
 ]
 
 pytest = [
@@ -37,11 +37,13 @@ pytest = [
 ]
 
 development = [
-    "django>=5.0",
+    "django>=5.2",
     "pytest>=8.0",
+    "pytest-django>=4.9",
     "pytest-playwright>=0.7",
     "ruff>=0.16",
-    "ty>=0.0.69",
+    "ty>=0.0.75",
+    "typing-extensions>=4.12",
 ]
 
 [tool.uv.build-backend]

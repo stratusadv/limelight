@@ -1,35 +1,39 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Self, cast
+from typing import TYPE_CHECKING, Any, Self, cast
 
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import Error as PlaywrightError, TimeoutError as PlaywrightTimeoutError
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
+    from pathlib import Path
 
     from playwright.sync_api import FloatRect, Locator, Page
 
-    from limelight.frames import VideoSink
+    from limelight.capture.sinks import VideoSink
+    from limelight.ffmpeg import Encoder
     from limelight.ledger import LedgerRow
+    from limelight.narrator import Narrator
+
+
+def fixture_function(fixture: object) -> Any:
+    return cast('Any', fixture).__wrapped__
 
 
 class FakeApplication:
-    def __init__(self, user: object = None) -> None:
-        self.login_pages: list[object] = []
+    def __init__(self) -> None:
+        self.logins: list[tuple[object, object]] = []
         self.url_requests: list[tuple[str, dict[str, object]]] = []
-        self.user = user
 
-    def login(self, page: object) -> None:
-        self.login_pages.append(page)
+    def login(self, page: object, user: object) -> None:
+        login = (page, user)
+        self.logins.append(login)
 
-    def url(self, route: str, url_kwargs: dict[str, object]) -> str:
+    def url(self, route: str, **url_kwargs: object) -> str:
         request = (route, url_kwargs)
         self.url_requests.append(request)
 
         return f'http://stage.test/{route}'
-
-    def with_user(self, user: object) -> FakeApplication:
-        return FakeApplication(user)
 
 
 class FakeBarrier:
@@ -63,45 +67,19 @@ class FakeLocator:
     def __init__(self, boxes: Sequence[Mapping[str, float] | None] | None = None) -> None:
         self.boxes: list[Mapping[str, float] | None] = list(boxes or [])
         self.check_count = 0
-        self.children: list[FakeLocator] = []
+        self.checked: bool | None = None
         self.click_count = 0
-        self.click_forces: list[bool] = []
-        self.evaluate_error: Exception | None = None
-        self.evaluate_timeouts: list[float | None] = []
         self.fill_values: list[str] = []
-        self.filter_haves: list[object] = []
-        self.filter_texts: list[str | None] = []
-        self.filter_visibles: list[bool | None] = []
         self.hover_count = 0
         self.input_type = 'text'
         self.label = ''
-        self.owner_page = FakePage()
-        self.placeholder_queries: list[str] = []
+        self.option_labels: list[str] = []
+        self.point_hits = True
         self.pressed_keys: list[str] = []
         self.scroll_timeouts: list[int] = []
         self.select_labels: list[str] = []
-        self.selector_queries: list[str] = []
-        self.text_queries: list[tuple[str, bool]] = []
         self.typed_sequences: list[tuple[str, float]] = []
         self.uncheck_count = 0
-
-    def _child(self) -> FakeLocator:
-        child = FakeLocator()
-        self.children.append(child)
-
-        return child
-
-    @property
-    def first(self) -> FakeLocator:
-        return self
-
-    @property
-    def last(self) -> FakeLocator:
-        return self
-
-    @property
-    def page(self) -> Page:
-        return self.owner_page.as_page()
 
     def as_locator(self) -> Locator:
         return cast('Locator', self)
@@ -119,13 +97,19 @@ class FakeLocator:
 
     def click(self, *, force: bool = False) -> None:
         self.click_count += 1
-        self.click_forces.append(force)
 
-    def evaluate(self, expression: str, *, timeout: float | None = None) -> object:
-        self.evaluate_timeouts.append(timeout)
+    def evaluate(
+        self,
+        expression: str,
+        argument: object = None,
+        *,
+        timeout: float | None = None,
+    ) -> object:
+        if 'elementFromPoint' in expression:
+            return self.point_hits
 
-        if self.evaluate_error is not None:
-            raise self.evaluate_error
+        if 'options' in expression:
+            return self.option_labels
 
         if 'tagName' in expression:
             return self.input_type
@@ -135,37 +119,15 @@ class FakeLocator:
     def fill(self, value: str) -> None:
         self.fill_values.append(value)
 
-    def filter(
-        self,
-        *,
-        has: object = None,
-        has_text: str | None = None,
-        visible: bool | None = None,
-    ) -> FakeLocator:
-        self.filter_haves.append(has)
-        self.filter_texts.append(has_text)
-        self.filter_visibles.append(visible)
-
-        return self
-
-    def get_by_placeholder(self, text: str) -> FakeLocator:
-        self.placeholder_queries.append(text)
-
-        return self._child()
-
-    def get_by_text(self, text: str, *, exact: bool = False) -> FakeLocator:
-        query = (text, exact)
-        self.text_queries.append(query)
-
-        return FakeLocator()
-
     def hover(self) -> None:
         self.hover_count += 1
 
-    def locator(self, selector: str) -> FakeLocator:
-        self.selector_queries.append(selector)
+    def is_checked(self) -> bool:
+        if self.checked is None:
+            message = 'not a checkbox'
+            raise PlaywrightError(message)
 
-        return self._child()
+        return self.checked
 
     def press(self, key: str) -> None:
         self.pressed_keys.append(key)
@@ -206,19 +168,21 @@ class FakePage:
         self.evaluations: list[tuple[str, object]] = []
         self.goto_urls: list[str] = []
         self.init_scripts: list[str] = []
+        self.installed = True
+        self.listeners: dict[str, list[object]] = {}
         self.load_states: list[str] = []
         self.locator_box: Mapping[str, float] = {'x': 0, 'y': 0, 'width': 100, 'height': 20}
-        self.locator_evaluate_error: Exception | None = None
         self.locator_locators: list[FakeLocator] = []
         self.locator_selectors: list[str] = []
         self.mouse = FakeMouse()
+        self.navigation_error_count = 0
         self.navigation_outcomes: list[bool] = []
         self.response_outcomes: list[bool] = []
+        self.response_predicates: list[object] = []
         self.role_locators: list[FakeLocator] = []
         self.role_queries: list[tuple[str, str | None, bool]] = []
         self.screenshot_paths: list[str] = []
         self.selector_waits: list[tuple[str, str]] = []
-        self.text_queries: list[tuple[str, bool]] = []
         self.url = 'http://stage.test/current'
         self.waits_ms: list[float] = []
 
@@ -240,6 +204,18 @@ class FakePage:
 
         return self.control_states.pop(0)
 
+    def _function_result(self, expression: str) -> object:
+        if 'selectShow(' in expression:
+            return {'x': 30.0, 'y': 60.0}
+
+        if 'controlPeek(' in expression:
+            return self._control_peek_next()
+
+        if 'controlRead(' in expression:
+            return self._control_state_next()
+
+        return None
+
     def add_init_script(self, script: str) -> None:
         self.init_scripts.append(script)
 
@@ -250,13 +226,21 @@ class FakePage:
         evaluation = (expression, argument)
         self.evaluations.append(evaluation)
 
-        if 'controlPeek()' in expression:
-            return self._control_peek_next()
+        if self.navigation_error_count > 0:
+            self.navigation_error_count -= 1
 
-        if 'controlRead()' in expression:
-            return self._control_state_next()
+            message = 'Execution context was destroyed, most likely because of a navigation'
+            raise PlaywrightError(message)
 
-        return None
+        if expression.startswith('(config) =>'):
+            self.installed = True
+
+            return None
+
+        if not self.installed:
+            return None
+
+        return {'result': self._function_result(expression)}
 
     def expect_navigation(self, *, url: object = None, timeout: int | None = None) -> FakeBarrier:
         succeeds = self.navigation_outcomes.pop(0) if self.navigation_outcomes else True
@@ -264,11 +248,19 @@ class FakePage:
         return FakeBarrier(succeeds=succeeds)
 
     def expect_response(self, predicate: object, *, timeout: int | None = None) -> FakeBarrier:
+        self.response_predicates.append(predicate)
+
         succeeds = self.response_outcomes.pop(0) if self.response_outcomes else True
 
         return FakeBarrier(succeeds=succeeds)
 
-    def get_by_role(self, role: str, *, name: str | None = None, exact: bool = False) -> FakeLocator:
+    def get_by_role(
+        self,
+        role: str,
+        *,
+        name: str | None = None,
+        exact: bool = False,
+    ) -> FakeLocator:
         query = (role, name, exact)
         self.role_queries.append(query)
 
@@ -276,12 +268,6 @@ class FakePage:
         self.role_locators.append(locator)
 
         return locator
-
-    def get_by_text(self, text: str, *, exact: bool = False) -> FakeLocator:
-        query = (text, exact)
-        self.text_queries.append(query)
-
-        return FakeLocator()
 
     def goto(self, url: str) -> None:
         self.goto_urls.append(url)
@@ -291,7 +277,6 @@ class FakePage:
 
         boxes = [self.locator_box]
         locator = FakeLocator(boxes=boxes)
-        locator.evaluate_error = self.locator_evaluate_error
 
         self.locator_locators.append(locator)
 
@@ -300,7 +285,17 @@ class FakePage:
     def screenshot(self, *, path: str) -> None:
         self.screenshot_paths.append(path)
 
-    def wait_for_load_state(self, state: str) -> None:
+    def emit(self, event: str, payload: object) -> None:
+        for handler in self.listeners.get(event, []):
+            cast('Callable[[object], None]', handler)(payload)
+
+    def on(self, event: str, handler: object) -> None:
+        self.listeners.setdefault(event, []).append(handler)
+
+    def remove_listener(self, event: str, handler: object) -> None:
+        self.listeners.get(event, []).remove(handler)
+
+    def wait_for_load_state(self, state: str, *, timeout: float | None = None) -> None:
         self.load_states.append(state)
 
     def wait_for_selector(self, selector: str, *, state: str = '') -> None:
@@ -310,34 +305,29 @@ class FakePage:
     def wait_for_timeout(self, ms: float) -> None:
         self.waits_ms.append(ms)
 
-    def wait_for_url(self, url: object, *, timeout: float | None = None) -> None:
-        succeeds = self.navigation_outcomes.pop(0) if self.navigation_outcomes else True
-
-        if not succeeds:
-            message = 'wait_for_url timeout'
-            raise PlaywrightTimeoutError(message)
 
 
-class FakePresenter:
-    def __init__(self) -> None:
+class FakeNarrator:
+    def __init__(self, screenshot_path: Path | None = None) -> None:
         self.calls: list[tuple[object, ...]] = []
+        self.screenshot_path = screenshot_path
 
-    def beat(self, ms: int = 1100) -> None:
-        self.calls.append(('beat', ms))
+    def as_narrator(self) -> Narrator:
+        return cast('Narrator', self)
 
     def check(self, locator: Locator) -> None:
         self.calls.append(('check', locator))
 
-    def clear(self) -> None:
-        self.calls.append(('clear',))
-
-    def clear_spotlight(self) -> None:
-        self.calls.append(('clear_spotlight',))
-
     def click(self, locator: Locator, *, force: bool = False) -> None:
         self.calls.append(('click', locator, force))
 
-    def delta_card(
+    def fill(self, locator: Locator, value: str) -> None:
+        self.calls.append(('fill', locator, value))
+
+    def hover(self, locator: Locator) -> None:
+        self.calls.append(('hover', locator))
+
+    def metrics(
         self,
         title: str,
         rows: list[LedgerRow],
@@ -346,16 +336,7 @@ class FakePresenter:
         subtitle: str = '',
         ms: int | None = None,
     ) -> None:
-        self.calls.append(('delta_card', title, rows, kicker, subtitle, ms))
-
-    def fill(self, locator: Locator, value: str) -> None:
-        self.calls.append(('fill', locator, value))
-
-    def hold(self) -> None:
-        self.calls.append(('hold',))
-
-    def hover(self, locator: Locator) -> None:
-        self.calls.append(('hover', locator))
+        self.calls.append(('metrics', title, rows, kicker, subtitle, ms))
 
     def narrate(
         self,
@@ -363,20 +344,23 @@ class FakePresenter:
         *,
         body: str = '',
         step: str = '',
-        tag: str = '',
-        kind: str = '',
         ms: int | None = None,
     ) -> None:
-        self.calls.append(('narrate', title, body, step, tag, kind, ms))
+        self.calls.append(('narrate', title, body, step, ms))
+
+    def pause(self, ms: int | None = None) -> None:
+        self.calls.append(('pause', ms))
 
     def press(self, locator: Locator, key: str) -> None:
         self.calls.append(('press', locator, key))
 
+    def screenshot(self, name: str) -> Path | None:
+        self.calls.append(('screenshot', name))
+
+        return self.screenshot_path
+
     def select(self, locator: Locator, option_label: str) -> None:
         self.calls.append(('select', locator, option_label))
-
-    def shot(self, name: str) -> None:
-        self.calls.append(('shot', name))
 
     def slide(self, *, track: Locator, thumb: Locator) -> None:
         self.calls.append(('slide', track, thumb))
@@ -392,21 +376,63 @@ class FakePresenter:
     ) -> None:
         self.calls.append(('spotlight', locator, label, dim, scroll, ms))
 
-    def title_card(
+    def switch_page(self, page: Page) -> None:
+        self.calls.append(('switch_page', page))
+
+    def title(
         self,
-        title: str,
+        text: str,
         *,
         kicker: str = '',
         subtitle: str = '',
         ms: int | None = None,
     ) -> None:
-        self.calls.append(('title_card', title, kicker, subtitle, ms))
+        self.calls.append(('title', text, kicker, subtitle, ms))
 
     def uncheck(self, locator: Locator) -> None:
         self.calls.append(('uncheck', locator))
 
-    def use_page(self, page: Page) -> None:
-        self.calls.append(('use_page', page))
+    def wait(self, ms: int) -> None:
+        self.calls.append(('wait', ms))
+
+
+class FakeEncoder:
+    def __init__(self) -> None:
+        self.pipes: list[list[str]] = []
+        self.process = FakeProcess()
+        self.runs: list[list[str]] = []
+
+    def as_encoder(self) -> Encoder:
+        return cast('Encoder', self)
+
+    def pipe(self, arguments: list[str]) -> FakeProcess:
+        self.pipes.append(arguments)
+
+        return self.process
+
+    def run(self, arguments: list[str]) -> None:
+        self.runs.append(arguments)
+
+
+class FakeProcess:
+    def __init__(self) -> None:
+        self.stdin = FakeStdin()
+        self.returncode = 0
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self.returncode
+
+
+class FakeStdin:
+    def __init__(self) -> None:
+        self.closed = False
+        self.written: list[bytes] = []
+
+    def close(self) -> None:
+        self.closed = True
+
+    def write(self, data: bytes) -> None:
+        self.written.append(data)
 
 
 class FakeClock:
@@ -420,19 +446,19 @@ class FakeClock:
 class FakeFrameRenderer:
     def __init__(self, *, fps: int = 60) -> None:
         self.fps = fps
-        self.retargets: list[object] = []
+        self.page_switches: list[object] = []
         self.sinks: list[VideoSink] = []
-        self.stop_count = 0
+        self.stopped = False
         self.waits_ms: list[float] = []
-
-    def retarget(self, page: object) -> None:
-        self.retargets.append(page)
 
     def start(self, sink: VideoSink) -> None:
         self.sinks.append(sink)
 
     def stop(self) -> None:
-        self.stop_count += 1
+        self.stopped = True
+
+    def switch_page(self, page: object) -> None:
+        self.page_switches.append(page)
 
     def wait_ms(self, ms: float) -> None:
         self.waits_ms.append(ms)

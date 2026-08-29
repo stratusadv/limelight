@@ -1,5 +1,5 @@
 indent-width = 4
-line-length = 120
+line-length = 100
 src = ["limelight", "tests"]
 target-version = "py313"
 
@@ -69,6 +69,7 @@ ignore = [
     "D",
     "I001",
     "ISC001",
+    "SIM102",
     "UP035",
 ]
 
@@ -79,6 +80,12 @@ inline-quotes = "single"
 max-args = 8
 
 [lint.per-file-ignores]
+"limelight/capture/renderer.py" = [
+    "BLE001",
+]
+"limelight/capture/sinks.py" = [
+    "ARG002",
+]
 "limelight/django/__init__.py" = [
     "S107",
 ]
@@ -89,8 +96,14 @@ max-args = 8
 "limelight/django/server.py" = [
     "BLE001",
 ]
-"limelight/video.py" = [
+"limelight/export/video.py" = [
+    "ARG002",
+]
+"limelight/ffmpeg.py" = [
     "S603",
+]
+"limelight/narrator.py" = [
+    "ARG002",
 ]
 "tests/*" = [
     "ANN401",
@@ -100,5 +113,6 @@ max-args = 8
     "INP001",
     "PLR2004",
     "S101",
+    "S106",
     "SLF001",
 ]

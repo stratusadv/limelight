@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from limelight.ledger import Ledger
+from typing import cast
+
+from limelight.ledger import Direction, Ledger
 
 
 def test_snapshot_reads_probes() -> None:
@@ -36,6 +38,7 @@ def test_rows_compute_deltas_and_directions() -> None:
         'direction': 'up',
         'sentiment': 'good',
     }
+
     assert rows[1]['delta'] == '-60 lb'
     assert rows[1]['direction'] == 'down'
     assert rows[1]['sentiment'] == 'bad'
@@ -56,7 +59,12 @@ def test_rows_format_fractions_with_two_decimals() -> None:
 
 def test_improves_down_flips_sentiment() -> None:
     values = {'Errors': 5.0}
-    ledger = Ledger().track('Errors', lambda: values['Errors'], improves='down', unit='errors')
+    ledger = Ledger().track(
+        'Errors',
+        lambda: values['Errors'],
+        improves=Direction.DOWN,
+        unit='errors',
+    )
 
     before = ledger.snapshot()
 
@@ -70,7 +78,7 @@ def test_improves_down_flips_sentiment() -> None:
 
 def test_improves_invalid_rejected() -> None:
     with pytest.raises(ValueError, match='improves'):
-        Ledger().track('Errors', lambda: 0.0, improves='sideways')
+        Ledger().track('Errors', lambda: 0.0, improves=cast('Direction', 'sideways'))
 
 
 def test_rows_reject_values_missing_a_tracked_metric() -> None:

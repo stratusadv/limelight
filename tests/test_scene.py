@@ -2,18 +2,19 @@ from __future__ import annotations
 
 import pytest
 
-from typing import override
+from typing_extensions import override
 
+from limelight.config import DemoConfig
+from limelight.demo import Demo
 from limelight.scene import Scene
-from limelight.session import DemoSession
 
-from fakes import FakeApplication, FakePage, FakePresenter
+from fakes import FakeApplication, FakePage
 
 
 class DashboardScene(Scene):
     route = 'home:dashboard'
 
-    def __init__(self, demo: DemoSession) -> None:
+    def __init__(self, demo: Demo) -> None:
         super().__init__(demo)
 
         self.ready_check_count = 0
@@ -23,20 +24,24 @@ class DashboardScene(Scene):
         self.ready_check_count += 1
 
 
+class PlainScene(Scene):
+    route = 'home:dashboard'
+
+
 class RoutelessScene(Scene):
     pass
 
 
-def session_build() -> tuple[DemoSession, FakeApplication]:
+def demo_build() -> tuple[Demo, FakeApplication]:
     application = FakeApplication()
-    session = DemoSession(FakePage().as_page(), application, presenter=FakePresenter())
+    demo = Demo(FakePage().as_page(), application, name='demo', config=DemoConfig())
 
-    return session, application
+    return demo, application
 
 
 def test_open_navigates_and_checks_readiness() -> None:
-    session, application = session_build()
-    scene = DashboardScene(session)
+    demo, application = demo_build()
+    scene = DashboardScene(demo)
 
     result = scene.open()
 
@@ -46,15 +51,23 @@ def test_open_navigates_and_checks_readiness() -> None:
 
 
 def test_open_forwards_url_kwargs() -> None:
-    session, application = session_build()
+    demo, application = demo_build()
 
-    DashboardScene(session).open(pk=7)
+    DashboardScene(demo).open(pk=7)
 
     assert application.url_requests == [('home:dashboard', {'pk': 7})]
 
 
 def test_open_requires_route() -> None:
-    session, _ = session_build()
+    demo, _ = demo_build()
 
     with pytest.raises(ValueError, match='route'):
-        RoutelessScene(session).open()
+        RoutelessScene(demo).open()
+
+
+def test_the_default_readiness_check_does_nothing() -> None:
+    demo, application = demo_build()
+    scene = PlainScene(demo)
+
+    assert scene.open() is scene
+    assert application.url_requests == [('home:dashboard', {})]

@@ -14,6 +14,9 @@ check: lint types test
 lint *ARGS:
 	{{PYTHON}} -m ruff check limelight tests {{ARGS}}
 
+lint-js:
+	node --check limelight/overlay/assets/*.js limelight/scripts/*.js
+
 test *ARGS:
 	{{PYTHON}} -m pytest {{ARGS}}
 
