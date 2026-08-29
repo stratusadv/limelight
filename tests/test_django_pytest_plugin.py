@@ -11,6 +11,8 @@ import django.test.testcases as django_testcases
 from limelight.django import pytest_plugin
 from limelight.django.server import SequentialLiveServerThread
 
+from fakes import fixture_function
+
 if TYPE_CHECKING:
     import pytest
 
@@ -40,11 +42,17 @@ class FakePlaywrightPage:
         self.navigation_timeouts.append(timeout_ms)
 
 
-def connections_stub_install(monkeypatch: pytest.MonkeyPatch, connections: list[FakeConnection]) -> None:
+def connections_stub_install(
+    monkeypatch: pytest.MonkeyPatch,
+    connections: list[FakeConnection],
+) -> None:
     monkeypatch.setattr('django.db.connections', SimpleNamespace(all=lambda: connections))
 
 
-def live_server_open(monkeypatch: pytest.MonkeyPatch, observed: list[object]) -> Generator[LiveServer]:
+def live_server_open(
+    monkeypatch: pytest.MonkeyPatch,
+    observed: list[object],
+) -> Generator[LiveServer]:
     class LiveServerStub:
         def __init__(self, host: str) -> None:
             self.host = host
@@ -118,3 +126,44 @@ def test_configure_allows_async_unsafe(monkeypatch: pytest.MonkeyPatch) -> None:
     pytest_plugin.pytest_configure(cast('pytest.Config', None))
 
     assert os.environ['DJANGO_ALLOW_ASYNC_UNSAFE'] == 'true'
+
+
+def test_the_navigation_timeout_fixture_carries_the_default() -> None:
+    timeout_ms = fixture_function(pytest_plugin.demo_navigation_timeout_ms)()
+
+    assert timeout_ms == pytest_plugin.NAVIGATION_TIMEOUT_MS
+
+
+def test_the_page_fixture_applies_the_navigation_timeout() -> None:
+    page = FakePlaywrightPage()
+
+    prepared = fixture_function(pytest_plugin.page)(page.as_page(), 4321)
+
+    assert prepared is page
+    assert page.navigation_timeouts == [4321]
+
+
+def test_the_live_server_fixture_stops_the_server_it_opened(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stops: list[str] = []
+
+    class LiveServerStub:
+        def __init__(self, host: str) -> None:
+            self.host = host
+
+        def stop(self) -> None:
+            stops.append(self.host)
+
+    helper = SimpleNamespace(LiveServer=LiveServerStub)
+
+    connections_stub_install(monkeypatch, [FakeConnection(vendor='postgresql', in_memory=False)])
+    monkeypatch.setitem(sys.modules, 'pytest_django.live_server_helper', helper)
+
+    servers = fixture_function(pytest_plugin.live_server)()
+    server = next(servers)
+
+    assert isinstance(server, LiveServerStub)
+    assert stops == []
+    assert next(servers, 'exhausted') == 'exhausted'
+    assert stops == ['localhost']

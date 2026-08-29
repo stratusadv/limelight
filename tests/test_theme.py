@@ -29,3 +29,8 @@ def test_empty_color_rejected() -> None:
 def test_empty_font_rejected() -> None:
     with pytest.raises(ValueError, match='font_family'):
         Theme(font_family='')
+
+
+def test_an_empty_spotlight_colour_is_refused() -> None:
+    with pytest.raises(ValueError, match='color_spotlight must not be empty'):
+        Theme(color_spotlight='  ')

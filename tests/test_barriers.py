@@ -3,11 +3,16 @@ from __future__ import annotations
 import pytest
 
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
-from limelight.barriers import trigger_until_navigation, trigger_until_response, trigger_until_visible
+from limelight.barriers import (
+    trigger_until_navigation,
+    trigger_until_response,
+    trigger_until_visible,
+    wait_until,
+)
 
 from fakes import FakeLocator, FakePage
 
@@ -86,7 +91,12 @@ def test_response_raises_when_attempts_exhausted() -> None:
     calls, trigger = trigger_counter()
 
     with pytest.raises(PlaywrightTimeoutError):
-        trigger_until_response(page.as_page(), trigger, url_fragment='orders/approve/', attempt_count=2)
+        trigger_until_response(
+            page.as_page(),
+            trigger,
+            url_fragment='orders/approve/',
+            attempt_count=2,
+        )
 
     assert calls == [1, 1]
 
@@ -173,3 +183,52 @@ def test_navigation_accepts_any_url_when_no_pattern_is_given() -> None:
     trigger_until_navigation(page.as_page(), trigger)
 
     assert calls == [1]
+
+
+def test_wait_until_returns_before_holding_when_the_predicate_holds() -> None:
+    holds: list[int] = []
+
+    wait_until(lambda: True, holds.append)
+
+    assert holds == []
+
+
+def test_wait_until_holds_for_the_interval_between_attempts() -> None:
+    holds: list[int] = []
+    outcomes = [False, False, True]
+
+    wait_until(lambda: outcomes.pop(0), holds.append, interval_ms=100)
+
+    assert holds == [100, 100]
+
+
+def test_wait_until_raises_once_attempts_are_exhausted() -> None:
+    holds: list[int] = []
+
+    with pytest.raises(AssertionError, match='condition not met after 750ms'):
+        wait_until(lambda: False, holds.append, attempt_count_max=3, interval_ms=250)
+
+    assert holds == [250, 250, 250]
+
+
+def test_wait_until_rejects_a_non_positive_attempt_count_max() -> None:
+    with pytest.raises(ValueError, match='attempt_count_max must be positive: 0'):
+        wait_until(lambda: True, lambda ms: None, attempt_count_max=0)
+
+
+def test_wait_until_rejects_a_non_positive_interval() -> None:
+    with pytest.raises(ValueError, match='interval_ms must be positive: 0'):
+        wait_until(lambda: True, lambda ms: None, interval_ms=0)
+
+
+def test_trigger_until_response_matches_on_a_url_fragment() -> None:
+    page = FakePage()
+
+    page.response_outcomes = [True]
+
+    trigger_until_response(page.as_page(), lambda: None, url_fragment='/orders/')
+
+    predicate = cast('Callable[[object], bool]', page.response_predicates[0])
+
+    assert predicate(SimpleNamespace(url='http://stage.test/orders/1')) is True
+    assert predicate(SimpleNamespace(url='http://stage.test/customers/1')) is False

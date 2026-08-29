@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal
+from enum import StrEnum
 from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
@@ -8,46 +10,60 @@ if TYPE_CHECKING:
     from typing import Self
 
 
-DIRECTION_DOWN = 'down'
-DIRECTION_FLAT = 'flat'
-DIRECTION_UP = 'up'
+class Direction(StrEnum):
+    """An enumeration of the ways a metric can move between two readings."""
+
+    DOWN = 'down'
+    FLAT = 'flat'
+    UP = 'up'
+
+
+class Sentiment(StrEnum):
+    """An enumeration of how a movement reads to a viewer."""
+
+    BAD = 'bad'
+    FLAT = 'flat'
+    GOOD = 'good'
+
 
 DELTA_SIGNS = {
-    DIRECTION_DOWN: '-',
-    DIRECTION_FLAT: '',
-    DIRECTION_UP: '+',
+    Direction.DOWN: '-',
+    Direction.FLAT: '',
+    Direction.UP: '+',
 }
 
-IMPROVES_DIRECTIONS = (DIRECTION_DOWN, DIRECTION_UP)
-
-SENTIMENT_BAD = 'bad'
-SENTIMENT_FLAT = 'flat'
-SENTIMENT_GOOD = 'good'
+IMPROVES_DIRECTIONS = (Direction.DOWN, Direction.UP)
 
 
-def _direction(delta: float) -> str:
+def _direction(delta: float) -> Direction:
+    """
+    A function that classifies the sign of a change.
+
+    :param delta: The change between the before and after readings.
+    :return: The direction the metric moved in.
+    """
+
     if delta > 0:
-        return DIRECTION_UP
+        return Direction.UP
 
     if delta < 0:
-        return DIRECTION_DOWN
+        return Direction.DOWN
 
-    return DIRECTION_FLAT
-
-
-def _sentiment(delta: float, improves: str) -> str:
-    direction = _direction(delta)
-
-    if direction == DIRECTION_FLAT:
-        return SENTIMENT_FLAT
-
-    if direction == improves:
-        return SENTIMENT_GOOD
-
-    return SENTIMENT_BAD
+    return Direction.FLAT
 
 
 def _format_number(value: float) -> str:
+    """
+    A function that formats a number for a ledger cell.
+
+    The value goes through Decimal because a float carries the binary rounding of
+    its own representation, so a whole number such as 3.0 has to be recognized as
+    whole before it can be printed without a decimal part.
+
+    :param value: The number to format.
+    :return: The number with thousands separators, and two decimal places if it is not whole.
+    """
+
     number = Decimal(str(value))
 
     if number == number.to_integral_value():
@@ -56,18 +72,64 @@ def _format_number(value: float) -> str:
     return f'{number:,.2f}'
 
 
+def _sentiment(delta: float, improves: Direction) -> Sentiment:
+    """
+    A function that decides whether a change is good, bad, or neither.
+
+    :param delta: The change between the before and after readings.
+    :param improves: The direction that counts as an improvement for this metric.
+    :return: The sentiment the change carries.
+    """
+
+    direction = _direction(delta)
+
+    if direction is Direction.FLAT:
+        return Sentiment.FLAT
+
+    if direction is improves:
+        return Sentiment.GOOD
+
+    return Sentiment.BAD
+
+
 class Ledger:
+    """
+    A recorder for the metrics a demo compares before and after a workflow.
+
+    This class tracks a metric by name along with the probe that reads it and the
+    direction that counts as an improvement, then renders the readings as rows the
+    overlay can draw.
+    """
+
     def __init__(self) -> None:
+        """The constructor for the Ledger class."""
+
         self._metrics: dict[str, LedgerMetric] = {}
 
     @staticmethod
     def _delta_label(delta: float, unit: str) -> str:
+        """
+        A method that formats a change as a signed, united string.
+
+        :param delta: The change between the before and after readings.
+        :param unit: The unit the metric is measured in.
+        :return: The change with its sign and unit.
+        """
+
         sign = DELTA_SIGNS[_direction(delta)]
         magnitude = _format_number(abs(delta))
 
         return f'{sign}{magnitude} {unit}'.strip()
 
     def _values_validate(self, values: Mapping[str, float], kind: str) -> None:
+        """
+        A method that rejects a reading that omits a tracked metric.
+
+        :param values: The readings keyed by metric label.
+        :param kind: The name of the reading, used in the error message.
+        :raises KeyError: If any tracked metric has no reading.
+        """
+
         labels_missing = sorted(set(self._metrics) - set(values))
 
         if labels_missing:
@@ -78,9 +140,31 @@ class Ledger:
 
     @staticmethod
     def _value_label(value: float, unit: str) -> str:
+        """
+        A method that formats a reading as a united string.
+
+        :param value: The reading to format.
+        :param unit: The unit the metric is measured in.
+        :return: The reading with its unit.
+        """
+
         return f'{_format_number(value)} {unit}'.strip()
 
-    def rows(self, before: Mapping[str, float], after: Mapping[str, float] | None = None) -> list[LedgerRow]:
+    def rows(
+        self,
+        before: Mapping[str, float],
+        *,
+        after: Mapping[str, float] | None = None,
+    ) -> list[LedgerRow]:
+        """
+        A method that renders the tracked metrics as before and after rows.
+
+        :param before: The readings taken before the workflow.
+        :param after: The readings taken after the workflow, or None to probe them now.
+        :return: One row per tracked metric, in the order the metrics were tracked.
+        :raises KeyError: If either reading omits a tracked metric.
+        """
+
         after_values = after if after is not None else self.snapshot()
 
         self._values_validate(before, 'before')
@@ -107,6 +191,12 @@ class Ledger:
         return rows
 
     def snapshot(self) -> dict[str, float]:
+        """
+        A method that reads every tracked metric through its probe.
+
+        :return: The current reading of each metric, keyed by label.
+        """
+
         return {label: float(metric.probe()) for label, metric in self._metrics.items()}
 
     def track(
@@ -114,31 +204,46 @@ class Ledger:
         label: str,
         probe: Callable[[], float],
         *,
-        improves: str = DIRECTION_UP,
+        improves: Direction = Direction.UP,
         unit: str = '',
     ) -> Self:
+        """
+        A method that registers a metric and the probe that reads it.
+
+        :param label: The name the metric is shown under.
+        :param probe: The callable that reads the current value.
+        :param improves: The direction that counts as an improvement.
+        :param unit: The unit the metric is measured in.
+        :return: The ledger itself, so calls can be chained.
+        :raises ValueError: If the improving direction is flat.
+        """
+
         if improves not in IMPROVES_DIRECTIONS:
             options = ', '.join(IMPROVES_DIRECTIONS)
 
             message = f'improves must be one of: {options} (got "{improves}")'
             raise ValueError(message)
 
-        self._metrics[label] = LedgerMetric(probe, improves=improves, unit=unit)
+        self._metrics[label] = LedgerMetric(improves=Direction(improves), probe=probe, unit=unit)
 
         return self
 
 
+@dataclass(frozen=True)
 class LedgerMetric:
-    def __init__(self, probe: Callable[[], float], *, improves: str = DIRECTION_UP, unit: str) -> None:
-        self.improves = improves
-        self.probe = probe
-        self.unit = unit
+    """A tracked metric, its probe, and the direction that improves it."""
+
+    improves: Direction
+    probe: Callable[[], float]
+    unit: str
 
 
 class LedgerRow(TypedDict):
+    """A rendered comparison of one metric before and after a workflow."""
+
     after: str
     before: str
     delta: str
-    direction: str
+    direction: Direction
     label: str
-    sentiment: str
+    sentiment: Sentiment

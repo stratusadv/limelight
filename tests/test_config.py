@@ -2,16 +2,24 @@ from __future__ import annotations
 
 import pytest
 
-from limelight.config import DEMO_MODE_NARRATE, DEMO_MODE_PRESENT, DEMO_MODE_SILENT, SPEED_FACTORS, DemoConfig
+from limelight.config import (
+    DEMO_MODE_NARRATE,
+    DEMO_MODE_PRESENT,
+    DEMO_MODE_SILENT,
+    SPEED_FACTORS,
+    DemoConfig,
+    VIDEO_QUALITIES,
+    VIDEO_QUALITY_DEFAULT,
+)
 
 
 ENVIRONMENT_VARIABLES = (
-    'DEMO_FAST',
     'DEMO_MODE',
     'DEMO_SHOTS',
     'DEMO_SPEED',
     'DEMO_STEP_MS',
     'DEMO_VIDEO',
+    'DEMO_VIDEO_QUALITY',
 )
 
 
@@ -82,28 +90,12 @@ def test_speed_invalid_rejected(environment: pytest.MonkeyPatch) -> None:
         DemoConfig.from_env()
 
 
-def test_fast_flag_means_turbo(environment: pytest.MonkeyPatch) -> None:
-    environment.setenv('DEMO_FAST', '1')
-
-    config = DemoConfig.from_env()
-
-    assert config.speed_factor == SPEED_FACTORS['turbo']
-
-
-def test_fast_flag_accepts_any_truthy_spelling(environment: pytest.MonkeyPatch) -> None:
-    environment.setenv('DEMO_FAST', 'yes')
-
-    config = DemoConfig.from_env()
-
-    assert config.speed_factor == SPEED_FACTORS['turbo']
-
-
 def test_step_ms_from_environment(environment: pytest.MonkeyPatch) -> None:
     environment.setenv('DEMO_STEP_MS', '2500')
 
     config = DemoConfig.from_env()
 
-    assert config.timing.step_ms == 2500
+    assert config.step_ms == 2500
 
 
 def test_step_ms_non_numeric_rejected(environment: pytest.MonkeyPatch) -> None:
@@ -116,7 +108,7 @@ def test_step_ms_non_numeric_rejected(environment: pytest.MonkeyPatch) -> None:
 def test_step_ms_zero_rejected(environment: pytest.MonkeyPatch) -> None:
     environment.setenv('DEMO_STEP_MS', '0')
 
-    with pytest.raises(ValueError, match='DEMO_STEP_MS'):
+    with pytest.raises(ValueError, match='step_ms'):
         DemoConfig.from_env()
 
 
@@ -133,3 +125,77 @@ def test_shots_and_video_truthy(environment: pytest.MonkeyPatch) -> None:
 def test_constructor_rejects_unknown_mode() -> None:
     with pytest.raises(ValueError, match='mode'):
         DemoConfig(mode='loud')
+
+
+def test_constructor_rejects_speed_factor_zero() -> None:
+    with pytest.raises(ValueError, match='speed_factor'):
+        DemoConfig(speed_factor=0)
+
+
+def test_constructor_rejects_step_ms_zero() -> None:
+    with pytest.raises(ValueError, match='step_ms'):
+        DemoConfig(step_ms=0)
+
+
+def test_video_disables_controls() -> None:
+    assert DemoConfig(mode='narrate').controls is True
+    assert DemoConfig(mode='narrate', video=True).controls is False
+
+
+def test_quality_defaults_to_medium(environment: pytest.MonkeyPatch) -> None:
+    config = DemoConfig.from_env()
+
+    assert config.quality == VIDEO_QUALITY_DEFAULT
+    assert config.video_quality == VIDEO_QUALITIES['medium']
+
+
+def test_quality_from_the_environment(environment: pytest.MonkeyPatch) -> None:
+    environment.setenv('DEMO_VIDEO_QUALITY', 'low')
+
+    config = DemoConfig.from_env()
+
+    assert config.quality == 'low'
+    assert config.video_quality == VIDEO_QUALITIES['low']
+
+
+def test_an_unknown_quality_from_the_environment_is_refused(
+    environment: pytest.MonkeyPatch,
+) -> None:
+    environment.setenv('DEMO_VIDEO_QUALITY', 'cinematic')
+
+    with pytest.raises(ValueError, match='DEMO_VIDEO_QUALITY must be one of'):
+        DemoConfig.from_env()
+
+
+def test_constructor_rejects_an_unknown_quality() -> None:
+    with pytest.raises(ValueError, match='quality must be one of'):
+        DemoConfig(quality='cinematic')
+
+
+def test_every_quality_falls_within_the_encoder_bounds() -> None:
+    for quality in VIDEO_QUALITIES.values():
+        assert quality.crf >= 0
+        assert quality.device_scale_factor >= 1
+        assert quality.fps >= 1
+        assert quality.preset
+        assert 0 <= quality.screenshot_quality <= 100
+
+
+def test_lower_qualities_cost_less_than_higher_ones() -> None:
+    low = VIDEO_QUALITIES['low']
+    medium = VIDEO_QUALITIES['medium']
+    high = VIDEO_QUALITIES['high']
+
+    assert low.crf > medium.crf > high.crf
+    assert low.screenshot_quality < medium.screenshot_quality < high.screenshot_quality
+    assert low.device_scale_factor <= medium.device_scale_factor <= high.device_scale_factor
+
+
+def test_the_cursor_is_drawn_unless_the_environment_hides_it(
+    environment: pytest.MonkeyPatch,
+) -> None:
+    assert DemoConfig.from_env().cursor_hidden is False
+
+    environment.setenv('DEMO_CURSOR_HIDDEN', 'true')
+
+    assert DemoConfig.from_env().cursor_hidden is True

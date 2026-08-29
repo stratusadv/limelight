@@ -34,19 +34,16 @@ jobs:
         python-version-file: '.python-version'
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v9.0.0
+      uses: astral-sh/setup-uv@v10.0.1
       with:
         version: "latest"
 
     - name: Generate uv lock file
       run: |
-        # Remove existing lock file to ensure clean generation
         rm -f uv.lock
 
-        # Generate new lock file
         uv lock
 
-        # Check for changes and set output
         if git diff --quiet uv.lock; then
           echo "lock_updated=false" >> $GITHUB_OUTPUT
           echo "No changes detected in uv lock file"

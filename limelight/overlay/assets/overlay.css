@@ -1,0 +1,331 @@
+#limelight-caption, #limelight-spot, #limelight-spot-label, #limelight-title {
+    position: fixed;
+    z-index: 2147483645;
+    pointer-events: none;
+    font-family: var(--limelight-font);
+}
+#limelight-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483644;
+    pointer-events: none;
+    background: rgba(8, 11, 18, 0.64);
+    opacity: 0;
+    transition: opacity .4s ease;
+}
+#limelight-backdrop.show { opacity: 1; }
+#limelight-caption {
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) scale(0.98);
+    max-width: min(940px, 92vw);
+    background: rgba(15, 18, 26, 0.95);
+    color: #f4f6fb;
+    border-left: 6px solid var(--limelight-accent);
+    border-radius: 16px;
+    padding: 20px 30px;
+    box-shadow: 0 22px 70px rgba(0, 0, 0, 0.6);
+    opacity: 0;
+    transition: opacity .4s ease, transform .4s ease;
+}
+#limelight-caption.show {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+}
+#limelight-caption .pills {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+#limelight-caption .pill {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: 4px 12px;
+    border-radius: 999px;
+}
+#limelight-caption .pill-step { background: #26324a; color: #9cc4ff; }
+#limelight-caption h3 {
+    margin: 0 0 8px;
+    font-size: 23px;
+    font-weight: 700;
+    line-height: 1.2;
+    color: #f4f6fb;
+}
+#limelight-caption p {
+    margin: 0;
+    font-size: 16px;
+    line-height: 1.55;
+    color: #c9d4e6;
+}
+#limelight-spot {
+    border-radius: 12px;
+    border: 3px solid var(--limelight-spotlight);
+    box-shadow: 0 0 0 9999px rgba(8, 11, 18, 0.64),
+                0 0 26px 8px
+                color-mix(in srgb, var(--limelight-spotlight) 85%, transparent);
+    transition: top .45s ease, left .45s ease, width .45s ease, height .45s ease;
+}
+#limelight-spot.nodim {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--limelight-spotlight) 45%, transparent),
+                0 0 24px 8px
+                color-mix(in srgb, var(--limelight-spotlight) 90%, transparent);
+}
+#limelight-spot-label {
+    background: var(--limelight-spotlight);
+    color: #3a2c00;
+    font-weight: 700;
+    font-size: 14px;
+    padding: 7px 13px;
+    border-radius: 9px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    max-width: 360px;
+}
+#limelight-title {
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    background: radial-gradient(
+        circle at 50% 38%,
+        rgba(20, 28, 44, 0.97),
+        rgba(5, 8, 14, 0.99)
+    );
+    color: #fff;
+    opacity: 0;
+    transition: opacity .45s ease;
+}
+#limelight-title.show { opacity: 1; }
+#limelight-title .box { max-width: 82vw; }
+#limelight-title .kicker {
+    font-size: 15px;
+    letter-spacing: .34em;
+    text-transform: uppercase;
+    color: #9cc4ff;
+    margin-bottom: 20px;
+}
+#limelight-title h1 {
+    font-size: 48px;
+    font-weight: 800;
+    margin: 0 0 18px;
+    line-height: 1.1;
+    color: #fff;
+}
+#limelight-title p {
+    font-size: 21px;
+    color: #c9d4e6;
+    margin: 0;
+    line-height: 1.5;
+}
+#limelight-metrics {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483645;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    font-family: var(--limelight-font);
+    background: radial-gradient(
+        circle at 50% 36%,
+        rgba(20, 28, 44, 0.97),
+        rgba(5, 8, 14, 0.99)
+    );
+    opacity: 0;
+    transition: opacity .45s ease;
+}
+#limelight-metrics.show { opacity: 1; }
+#limelight-metrics .box { width: min(980px, 92vw); }
+#limelight-metrics .kicker {
+    font-size: 14px;
+    letter-spacing: .3em;
+    text-transform: uppercase;
+    color: #9cc4ff;
+    margin-bottom: 14px;
+    text-align: center;
+}
+#limelight-metrics h2 {
+    font-size: 34px;
+    font-weight: 800;
+    color: #fff;
+    margin: 0 0 10px;
+    text-align: center;
+    line-height: 1.15;
+}
+#limelight-metrics .sub {
+    font-size: 17px;
+    color: #c9d4e6;
+    margin: 0 auto 26px;
+    text-align: center;
+    max-width: 760px;
+    line-height: 1.5;
+}
+#limelight-metrics table { width: 100%; border-collapse: collapse; color: #f4f6fb; }
+#limelight-metrics thead th {
+    font-size: 12px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: #7e8aa3;
+    font-weight: 700;
+    padding: 8px 16px;
+    text-align: left;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+#limelight-metrics thead th.num, #limelight-metrics td.num { text-align: right; }
+#limelight-metrics tbody td {
+    font-size: 20px;
+    padding: 15px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+#limelight-metrics td.metric { font-weight: 600; }
+#limelight-metrics td.before { color: #c9d4e6; }
+#limelight-metrics td.arrow { color: #5e6b85; text-align: center; }
+#limelight-metrics td.after { font-weight: 700; }
+#limelight-metrics td.delta { font-weight: 800; }
+#limelight-metrics tr.sentiment-good td.delta { color: #7ee0a8; }
+#limelight-metrics tr.sentiment-bad td.delta { color: #ffb86b; }
+#limelight-metrics tr.sentiment-flat td.delta { color: #7e8aa3; }
+#limelight-cursor {
+    position: fixed;
+    z-index: 2147483646;
+    pointer-events: none;
+    width: 22px;
+    height: 22px;
+    margin: -11px 0 0 -11px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.9);
+    border: 2px solid rgba(8, 11, 18, 0.85);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    transition: opacity .25s ease,
+                transform .18s ease;
+}
+#limelight-cursor.show { opacity: 1; }
+#limelight-cursor.pulse { transform: scale(0.82); }
+#limelight-cursor.pulse::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 3px solid var(--limelight-accent);
+    animation: limelight-cursor-pulse .4s ease-out;
+}
+@keyframes limelight-cursor-pulse {
+    from { transform: scale(0.5); opacity: 1; }
+    to { transform: scale(2.4); opacity: 0; }
+}
+#limelight-select {
+    position: fixed;
+    z-index: 2147483645;
+    pointer-events: none;
+    overflow-y: auto;
+    scrollbar-width: none;
+    max-height: 40vh;
+    border-radius: 10px;
+    background: rgba(252, 253, 255, 0.98);
+    border: 1px solid rgba(8, 11, 18, 0.18);
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+    font-family: var(--limelight-font);
+    opacity: 0;
+    transition: opacity .15s ease;
+}
+#limelight-select.show { opacity: 1; }
+#limelight-select .option {
+    padding: 9px 14px;
+    font-size: 15px;
+    color: #1c2333;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#limelight-select .option.chosen {
+    background: var(--limelight-accent);
+    color: #ffffff;
+}
+#limelight-keys {
+    position: fixed;
+    left: 50%;
+    bottom: 64px;
+    transform: translateX(-50%);
+    z-index: 2147483646;
+    pointer-events: none;
+    max-width: min(720px, 90vw);
+    padding: 8px 16px;
+    border-radius: 10px;
+    background: rgba(15, 18, 26, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: #f4f6fb;
+    font-family: ui-monospace, 'Cascadia Mono', 'Consolas', monospace;
+    font-size: 15px;
+    letter-spacing: .06em;
+    white-space: nowrap;
+    overflow: hidden;
+    opacity: 0;
+    transition: opacity .2s ease;
+}
+#limelight-keys.show { opacity: 1; }
+#limelight-control {
+    position: fixed;
+    right: 32px;
+    bottom: 32px;
+    z-index: 2147483647;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 0;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(15, 18, 26, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    font-family: var(--limelight-font);
+    pointer-events: none;
+}
+#limelight-control.hidden { display: none; }
+#limelight-control button, #limelight-control .speed { box-sizing: border-box; }
+#limelight-control button {
+    border: none;
+    border-radius: 0;
+    box-shadow: inset -1px 0 rgba(255, 255, 255, 0.14);
+    background: transparent;
+    color: #f4f6fb;
+    font-family: var(--limelight-font);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    padding: 13px 15px;
+    cursor: pointer;
+    pointer-events: auto;
+    align-self: stretch;
+}
+#limelight-control button:last-child { box-shadow: none; }
+#limelight-control-pause { min-width: calc(6ch + 30px); }
+#limelight-control button:hover { background: rgba(255, 255, 255, 0.12); }
+#limelight-control button.engaged {
+    background: var(--limelight-spotlight);
+    border-color: var(--limelight-spotlight);
+    color: #3a2c00;
+}
+#limelight-control .speed {
+    color: #9cc4ff;
+    font-size: 12px;
+    font-weight: 700;
+    min-width: calc(6ch + 28px);
+    padding: 0 14px;
+    box-shadow: inset -1px 0 rgba(255, 255, 255, 0.14);
+    text-align: center;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+html.limelight-motionless [id^="limelight-"],
+html.limelight-motionless [id^="limelight-"]::after {
+    transition: none !important;
+    animation: none !important;
+}
+

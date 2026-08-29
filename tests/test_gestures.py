@@ -5,7 +5,7 @@ import pytest
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
-from limelight.gestures import slide_to_end
+from limelight.gestures import slide_geometry, slide_to_end
 
 from fakes import FakeLocator, FakePage
 
@@ -65,3 +65,11 @@ def test_slide_rejects_non_positive_step_count() -> None:
             thumb=FakeLocator().as_locator(),
             step_count=0,
         )
+
+
+def test_a_thumb_without_a_box_is_refused() -> None:
+    track = FakeLocator([{'x': 0, 'y': 0, 'width': 200, 'height': 20}])
+    thumb = FakeLocator()
+
+    with pytest.raises(ValueError, match='thumb has no bounding box'):
+        slide_geometry(track=track.as_locator(), thumb=thumb.as_locator())
