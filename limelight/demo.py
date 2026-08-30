@@ -5,7 +5,11 @@ import contextlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from playwright.sync_api import Error as PlaywrightError, TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import (
+    Error as PlaywrightError,
+    TimeoutError as PlaywrightTimeoutError,
+    expect,
+)
 
 from limelight import barriers
 from limelight.artifacts import DIRECTORY_ROOT, TRANSCRIPT_FILE_NAME, VIDEO_FILE_NAME
@@ -41,6 +45,8 @@ LOCATOR_LABEL_TIMEOUT_MS = 2000
 LOGIN_SETTLE_TIMEOUT_MS = 5000
 
 PRINT_STUB_SCRIPT = 'window.print = () => {};'
+
+REVEAL_TIMEOUT_MS = 30_000
 
 
 def _hold_ms_validate(ms: int | None) -> None:
@@ -360,6 +366,41 @@ class Demo:
 
         self._record_action(EventName.PRESS, locator, key=key)
         self._narrator.press(locator, key)
+
+    def reveal(
+        self,
+        locator: Locator,
+        *,
+        headline: str,
+        body: str = '',
+        step: str = '',
+        label: str = '',
+        shot: str = '',
+    ) -> None:
+        """
+        A method that shows the viewer an element, once it is on the page.
+
+        The element is waited for before anything is said about it, so a caption
+        never describes something the viewer cannot see.
+
+        :param locator: The locator for the element to show.
+        :param headline: The narration headline.
+        :param body: The narration body shown under the headline.
+        :param step: The step label the narration carries.
+        :param label: The caption shown beside the element.
+        :param shot: The screenshot name to capture, or an empty string to
+            capture nothing.
+        :raises AssertionError: If the element never appears.
+        """
+
+        expect(locator).to_be_visible(timeout=REVEAL_TIMEOUT_MS)
+
+        self.narrate(headline, step=step, body=body)
+
+        self.spotlight(locator, label=label)
+
+        if shot:
+            self.screenshot(shot)
 
     def screenshot(self, name: str) -> None:
         """

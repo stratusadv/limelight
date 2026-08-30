@@ -5,6 +5,7 @@ import json
 import pytest
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 from limelight.capture.renderer import renderer_register, renderer_unregister
@@ -147,6 +148,51 @@ def test_actions_delegate_to_the_narrator(demos_root: Path) -> None:
     ]
 
     assert locator.click_count == 0
+
+
+def expect_stub(locator: object) -> SimpleNamespace:
+    return SimpleNamespace(to_be_visible=lambda timeout: None)
+
+
+def test_reveal_narrates_and_spotlights_the_element(
+    demos_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr('limelight.demo.expect', expect_stub)
+
+    demo, _, _, narrator = demo_build()
+    locator = FakeLocator()
+
+    demo.reveal(
+        locator.as_locator(),
+        headline='The field is on the page',
+        body='It carries the surveyed acreage.',
+        step='In the portal',
+        label='163.47 acres',
+    )
+
+    narrations = [call for call in narrator.calls if call[0] == 'narrate']
+    spotlights = [call for call in narrator.calls if call[0] == 'spotlight']
+
+    narration = ('The field is on the page', 'It carries the surveyed acreage.', 'In the portal')
+
+    assert narrations[0][1:4] == narration
+    assert spotlights[0][2] == '163.47 acres'
+    assert not any(call[0] == 'screenshot' for call in narrator.calls)
+
+
+def test_reveal_shoots_only_when_a_name_is_given(
+    demos_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr('limelight.demo.expect', expect_stub)
+
+    demo, _, _, narrator = demo_build()
+    locator = FakeLocator()
+
+    demo.reveal(locator.as_locator(), headline='Shown', shot='field-detail')
+
+    assert ('screenshot', 'field-detail') in narrator.calls
 
 
 def test_screenshot_records_the_file_the_narrator_wrote(demos_root: Path) -> None:

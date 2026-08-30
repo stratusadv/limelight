@@ -340,8 +340,8 @@ pytest = [
 
 [package.metadata]
 requires-dist = [
-    { name = "django", marker = "extra == 'development'", specifier = ">=5.2" },
-    { name = "django", marker = "extra == 'django'", specifier = ">=5.2" },
+    { name = "django", marker = "extra == 'development'", specifier = ">=4" },
+    { name = "django", marker = "extra == 'django'", specifier = ">=4" },
     { name = "playwright", specifier = ">=1.49" },
     { name = "pytest", marker = "extra == 'development'", specifier = ">=8.0" },
     { name = "pytest", marker = "extra == 'pytest'", specifier = ">=8.0" },
