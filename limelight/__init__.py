@@ -7,7 +7,14 @@ from limelight.barriers import (
     trigger_until_response,
     trigger_until_visible,
 )
-from limelight.components import ELEMENT_WAIT_TIMEOUT_MS, Modal, Navigator, SearchAndSelect
+from limelight.components import (
+    ELEMENT_WAIT_TIMEOUT_MS,
+    Confirm,
+    Dropdown,
+    Modal,
+    Navigator,
+    SearchAndSelect,
+)
 from limelight.config import DemoConfig
 from limelight.demo import Demo
 from limelight.ledger import Direction, Ledger, LedgerRow, Sentiment
@@ -18,9 +25,11 @@ from limelight.world import World
 __all__ = [
     'ELEMENT_WAIT_TIMEOUT_MS',
     'Application',
+    'Confirm',
     'Demo',
     'DemoConfig',
     'Direction',
+    'Dropdown',
     'Ledger',
     'LedgerRow',
     'Modal',

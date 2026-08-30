@@ -40,6 +40,8 @@ if TYPE_CHECKING:
     from limelight.theme import Theme
 
 
+FOLLOW_TIMEOUT_MS = 30_000
+
 LOCATOR_LABEL_SCRIPT = script('locator_label.js')
 LOCATOR_LABEL_TIMEOUT_MS = 2000
 
@@ -254,6 +256,37 @@ class Demo:
 
         self._record_action(EventName.FILL, locator, value=value)
         self._narrator.fill(locator, value)
+
+    def follow(
+        self,
+        locator: Locator,
+        *,
+        label: str = '',
+        timeout_ms: int = FOLLOW_TIMEOUT_MS,
+    ) -> None:
+        """
+        A method that clicks a link and waits out the page it leads to.
+
+        A destination a viewer is meant to follow is reached by clicking, so the
+        drawn pointer is over the link when it fires rather than jumping to a URL
+        the viewer never saw. The click is retried, because a link bound to a
+        client-side handler can be clicked before the handler is listening.
+
+        :param locator: The locator for the link.
+        :param label: The caption shown beside the link, or an empty string to
+            highlight nothing.
+        :param timeout_ms: The time each attempt waits for the navigation.
+        :raises PlaywrightTimeoutError: If the page never navigates.
+        """
+
+        if label:
+            self.spotlight(locator, label=label)
+
+        barriers.trigger_until_navigation(
+            self.page,
+            lambda: self.click(locator),
+            timeout_ms=timeout_ms,
+        )
 
     def goto(
         self,

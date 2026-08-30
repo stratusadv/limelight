@@ -258,6 +258,38 @@ def test_reveal_shoots_only_when_a_name_is_given(
     assert ('screenshot', 'field-detail') in narrator.calls
 
 
+def test_follow_spotlights_the_link_then_waits_out_the_navigation(demos_root: Path) -> None:
+    demo, page, _, narrator = demo_build()
+    locator = FakeLocator()
+
+    demo.follow(locator.as_locator(), label='Open the settings')
+
+    kinds = [call[0] for call in narrator.calls]
+
+    assert kinds == ['spotlight', 'click']
+    assert narrator.calls[0][2] == 'Open the settings'
+    assert page.navigation_outcomes == []
+
+
+def test_follow_retries_a_click_that_never_navigates(demos_root: Path) -> None:
+    demo, page, _, narrator = demo_build()
+    page.navigation_outcomes = [False, True]
+
+    demo.follow(FakeLocator().as_locator())
+
+    clicks = [call for call in narrator.calls if call[0] == 'click']
+
+    assert len(clicks) == 2
+
+
+def test_follow_without_a_label_highlights_nothing(demos_root: Path) -> None:
+    demo, _, _, narrator = demo_build()
+
+    demo.follow(FakeLocator().as_locator())
+
+    assert not any(call[0] == 'spotlight' for call in narrator.calls)
+
+
 def test_screenshot_records_the_file_the_narrator_wrote(demos_root: Path) -> None:
     narrator = FakeNarrator(screenshot_path=Path('01-welcome.png'))
     demo, _, _, _ = demo_build(narrator=narrator)

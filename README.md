@@ -93,6 +93,96 @@ those frames covers four times the pixels at a device scale factor of 2. A `high
 therefore takes around eight times the work of a `medium` one and leaves a file several
 times larger.
 
+## Page objects
+
+A `Scene` is one screen of the application. The subclass names the route, proves the screen
+has loaded, and offers one method per action a viewer would take, so a test reads as a list
+of steps rather than a list of selectors.
+
+```python
+from limelight import Scene
+from playwright.sync_api import expect
+
+
+class OrderScene(Scene):
+    route = 'sales:order:page:list'
+
+    def expect_ready(self) -> None:
+        expect(self.search_field).to_be_visible()
+
+    @property
+    def search_field(self):
+        return self.demo.page.get_by_placeholder('Search orders')
+
+    def search(self, text: str) -> None:
+        self._teach_focus(self.search_field, headline='Search the orders', label='Search')
+
+        self._fill(self.search_field, text)
+```
+
+The protected helpers are the vocabulary a scene is written in. `_click`, `_fill`, `_select`,
+`_check`, `_press`, and `_hover` each perform the action through the demo and then hold, so a
+narrated run shows the drawn pointer land before the next step begins and a silent run pays
+nothing for the hold. `_tab` opens a tab by its name. `_teach_focus` waits for an element,
+narrates it, and spotlights it in one step, which makes it a barrier in silent mode as well
+as a caption in a narrated one; `_teach_click` does the same and then clicks.
+
+A scene never calls a Playwright locator method directly, because a bare click moves the real
+mouse without moving the drawn one, and the click lands with the pointer somewhere else on
+screen.
+
+## Components
+
+A widget that appears on many screens is a component rather than a method on each scene. Each
+one carries its selectors as class attributes, so markup that differs is a subclass overriding
+a selector rather than a fork of the driver.
+
+| Component | What it drives |
+|---|---|
+| `Modal` | A dialog: opening it from its control, filling it by label, and submitting it. |
+| `Dropdown` | A menu that opens from a trigger and lists its actions. |
+| `Confirm` | The inline prompt that stands between an action and its effect. |
+| `SearchAndSelect` | A dropdown field that filters a long list and picks one choice. |
+| `Navigator` | A navigation menu, addressed by the text a viewer reads on its links. |
+
+```python
+from limelight import Confirm, Dropdown
+
+
+class RowMenu(Dropdown):
+    trigger_selector = '.bi-three-dots-vertical'
+
+
+class DestructiveConfirm(Confirm):
+    button_selector = '.btn-danger'
+
+
+RowMenu(demo, row).choose('Delete')
+DestructiveConfirm(demo).accept('Delete')
+```
+
+`Dropdown` scopes its trigger, its menu, and its actions to the region it is given, so a page
+holding one menu per row can address a single row without a menu left open elsewhere
+answering for it. `Confirm` leaves its click unbarriered on purpose, because a prompt sits in
+front of anything from a form post to a background write, so the caller wraps the accept in
+the barrier that proves its own effect landed.
+
+## Barriers
+
+Silent mode removes every time cushion, so correctness rests on retrying barriers rather than
+on holds. `trigger_until_navigation`, `trigger_until_response`, and `trigger_until_visible`
+each repeat a trigger until its effect arrives, because a click can land before the handler
+that listens for it is bound and a lost click leaves the page where it was with no error to
+catch. `trigger_until_response` matches by a substring of the response URL, by the method its
+request was made with, or by a predicate, exactly one at a time.
+
+```python
+trigger_until_response(page, lambda: demo.click(submit), method='POST')
+```
+
+`Demo.follow` is the barriered form of clicking a link: it spotlights the link, clicks it with
+the drawn pointer, and waits out the page it leads to.
+
 ## Configuration
 
 | Variable | Description | Default |

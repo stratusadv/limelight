@@ -85,6 +85,29 @@ def _attempt_count_validate(attempt_count: int) -> None:
         raise ValueError(message)
 
 
+def _method_predicate(method: str) -> Callable[[Response], bool]:
+    """
+    A function that builds a response predicate from an HTTP method.
+
+    :param method: The method the request behind the response was made with.
+    :return: The predicate that matches such a response.
+    """
+
+    wanted = method.upper()
+
+    def matches(response: Response) -> bool:
+        """
+        A function that reports whether a response answers that method.
+
+        :param response: The response to test.
+        :return: True if the request used the method, False otherwise.
+        """
+
+        return response.request.method.upper() == wanted
+
+    return matches
+
+
 def _url_fragment_predicate(url_fragment: str) -> Callable[[Response], bool]:
     """
     A function that builds a response predicate from a substring of a URL.
@@ -212,6 +235,7 @@ def trigger_until_response(
     trigger: Callable[[], None],
     *,
     url_fragment: str = '',
+    method: str = '',
     predicate: Callable[[Response], bool] | None = None,
     attempt_count: int = ATTEMPT_COUNT_DEFAULT,
     timeout_ms: int = BARRIER_TIMEOUT_MS_DEFAULT,
@@ -219,27 +243,39 @@ def trigger_until_response(
     """
     A function that repeats a trigger until a matching response arrives.
 
-    The response is matched either by a substring of its URL or by a predicate,
-    never both, so the two cannot disagree about which response ends the wait.
+    The response is matched by a substring of its URL, by the method its request
+    was made with, or by a predicate, exactly one at a time, so no two matchers
+    can disagree about which response ends the wait.
 
     :param page: The page expected to receive the response.
     :param trigger: The action that causes the request.
     :param url_fragment: The text the response URL must contain.
+    :param method: The HTTP method the request behind the response was made with.
     :param predicate: The test a response must pass.
     :param attempt_count: The number of times the trigger is retried.
     :param timeout_ms: The time each attempt waits for the response.
-    :raises ValueError: If the attempt count is not positive, or if the fragment and
-        the predicate are not given exactly one at a time.
+    :raises ValueError: If the attempt count is not positive, or if the matchers are
+        not given exactly one at a time.
     :raises PlaywrightTimeoutError: If the last attempt sees no matching response.
     """
 
     _attempt_count_validate(attempt_count)
 
-    if bool(url_fragment) == (predicate is not None):
-        message = 'trigger_until_response takes exactly one of url_fragment and predicate'
+    matcher_count = sum((bool(url_fragment), bool(method), predicate is not None))
+
+    if matcher_count != 1:
+        message = (
+            'trigger_until_response takes exactly one of url_fragment, method and predicate'
+        )
+
         raise ValueError(message)
 
-    matches = predicate if predicate is not None else _url_fragment_predicate(url_fragment)
+    if predicate is not None:
+        matches = predicate
+    elif method:
+        matches = _method_predicate(method)
+    else:
+        matches = _url_fragment_predicate(url_fragment)
 
     for attempt in range(attempt_count):
         try:

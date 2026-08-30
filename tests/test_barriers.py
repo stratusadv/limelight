@@ -140,6 +140,35 @@ def test_response_accepts_a_predicate() -> None:
     assert calls == [1]
 
 
+def test_response_accepts_a_method() -> None:
+    page = FakePage()
+    calls, trigger = trigger_counter()
+
+    trigger_until_response(page.as_page(), trigger, method='POST')
+
+    assert calls == [1]
+
+
+def test_response_matches_the_method_case_insensitively() -> None:
+    page = FakePage()
+    _, trigger = trigger_counter()
+
+    trigger_until_response(page.as_page(), trigger, method='post')
+
+    matches = page.response_predicates[0]
+
+    assert matches(SimpleNamespace(request=SimpleNamespace(method='POST'))) is True
+    assert matches(SimpleNamespace(request=SimpleNamespace(method='GET'))) is False
+
+
+def test_response_rejects_a_method_beside_a_url_fragment() -> None:
+    page = FakePage()
+    _, trigger = trigger_counter()
+
+    with pytest.raises(ValueError, match='exactly one'):
+        trigger_until_response(page.as_page(), trigger, url_fragment='orders/', method='POST')
+
+
 def test_visible_success_first_attempt(monkeypatch: pytest.MonkeyPatch) -> None:
     outcomes = [True]
 
