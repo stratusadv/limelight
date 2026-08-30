@@ -6,13 +6,14 @@ from typing import TYPE_CHECKING
 
 from playwright.sync_api import expect
 
+from limelight.barriers import trigger_until_visible
+
 if TYPE_CHECKING:
+    from playwright._impl._api_structures import AriaRole
     from playwright.sync_api import Locator
 
     from limelight.demo import Demo
 
-
-CONTENT_SELECTOR = '#dispatch-modal-content'
 
 ELEMENT_WAIT_TIMEOUT_MS = 30_000
 
@@ -31,14 +32,35 @@ OPEN_SETTLE_WAIT_MS = 1500
 
 class Modal:
     """
-    A narrated driver for a dispatch modal.
+    A narrated driver for a modal dialog.
 
-    This class opens a modal from the button that dispatches it, fills its
+    This class opens a modal from the control that dispatches it, fills its
     fields by the labels a viewer can read, and submits it, narrating and
     spotlighting each step so the recording explains itself. Every wait is
     bounded, and a form the browser refuses is reported by name rather than
     left as a click that did nothing.
+
+    The defaults describe plain HTML: a dialog found by its ARIA role, fields
+    found through their labels, and openers that are links or buttons. A project
+    whose markup differs subclasses this and overrides the selectors it needs,
+    which is also how a modal that teleports its content into a fixed pane is
+    reached.
+
+    ::
+
+        class DispatchModal(Modal):
+            content_selector = '#dispatch-modal-content'
+            opener_selector = 'a.btn'
     """
+
+    content_role: AriaRole = 'dialog'
+    content_selector = ''
+    field_selector = 'input, select, textarea'
+    form_selector = 'form'
+    group_selector = 'xpath=..'
+    label_selector = 'label'
+    opener_selector = 'a, button'
+    scope_selector = '.card'
 
     def __init__(self, demo: Demo) -> None:
         """
@@ -56,29 +78,31 @@ class Modal:
         :return: The invalid controls and their messages, or an empty string.
         """
 
-        return self.content.locator('form').first.evaluate(FORM_INVALID_SCRIPT)
+        return self.content.locator(self.form_selector).first.evaluate(FORM_INVALID_SCRIPT)
 
     def _opener(self, button: str, *, within: str) -> Locator:
         """
-        A method that locates the button dispatching the modal.
+        A method that locates the control dispatching the modal.
 
-        :param button: The text on the button.
-        :param within: The card header to scope the button to, or an empty
-            string to search the whole page.
-        :return: The locator for the button.
+        :param button: The text on the control.
+        :param within: The region to scope the control to, or an empty string to
+            search the whole page.
+        :return: The locator for the control.
         """
 
         root = self.demo.page
 
         if within:
+            opener = self.demo.page.locator(self.opener_selector).filter(has_text=button)
+
             root = (
-                self.demo.page.locator('.card')
+                self.demo.page.locator(self.scope_selector)
                 .filter(has_text=within)
-                .filter(has=self.demo.page.locator('a.btn').filter(has_text=button))
+                .filter(has=opener)
                 .last
             )
 
-        return root.locator('a.btn').filter(has_text=button).filter(visible=True).first
+        return root.locator(self.opener_selector).filter(has_text=button).filter(visible=True).first
 
     def _value_settle(self, field: Locator, value: str) -> None:
         """
@@ -114,10 +138,17 @@ class Modal:
         """
         A property that gets the open modal's content pane.
 
+        The pane is found by its dialog role unless a selector names it, because a
+        modal that teleports itself to the end of the body is not inside the markup
+        that opened it.
+
         :return: The locator for the modal content.
         """
 
-        return self.demo.page.locator(CONTENT_SELECTOR)
+        if self.content_selector:
+            return self.demo.page.locator(self.content_selector)
+
+        return self.demo.page.get_by_role(self.content_role)
 
     @property
     def form(self) -> Locator:
@@ -127,7 +158,25 @@ class Modal:
         :return: The locator for the modal form.
         """
 
-        return self.content.locator('form').filter(visible=True).first
+        return self.content.locator(self.form_selector).filter(visible=True).first
+
+    def choose(self, option_text: str, *, label: str = '') -> None:
+        """
+        A method that picks one option out of the open modal.
+
+        :param option_text: The exact text of the option to pick.
+        :param label: The spotlight caption, or an empty string to highlight nothing.
+        :raises AssertionError: If the option never appears.
+        """
+
+        option = self.option(option_text)
+
+        expect(option).to_be_visible(timeout=ELEMENT_WAIT_TIMEOUT_MS)
+
+        if label:
+            self.demo.spotlight(option, label=label)
+
+        self.demo.click(option)
 
     def field(self, label: str) -> Locator:
         """
@@ -137,7 +186,7 @@ class Modal:
         :return: The locator for the input, select, or textarea.
         """
 
-        return self.group(label).locator('input, select, textarea').first
+        return self.group(label).locator(self.field_selector).first
 
     def fill(self, label: str, value: str, *, headline: str = '', body: str = '') -> None:
         """
@@ -177,7 +226,12 @@ class Modal:
 
         pattern = re.compile(rf'^\s*{re.escape(label)}\s*\*?\s*$')
 
-        return self.content.locator('label').filter(has_text=pattern).locator('xpath=..').first
+        return (
+            self.content.locator(self.label_selector)
+            .filter(has_text=pattern)
+            .locator(self.group_selector)
+            .first
+        )
 
     def open(
         self,
@@ -190,27 +244,27 @@ class Modal:
         label: str = '',
     ) -> None:
         """
-        A method that narrates a button click and waits for the modal it opens.
+        A method that narrates a click and waits for the modal it opens.
 
-        The button is named by its text, or handed over as a locator when the
+        The control is named by its text, or handed over as a locator when the
         page holds no text that identifies it, such as an icon button on a row.
 
-        :param button: The text on the button that dispatches the modal, or the
-            locator for the button itself.
+        :param button: The text on the control that dispatches the modal, or the
+            locator for the control itself.
         :param headline: The narration headline.
         :param body: The narration body shown under the headline.
         :param step: The step label the narration carries.
-        :param within: The card header to scope the button to, when the page
-            holds more than one button of that name.
-        :param label: The spotlight caption, defaulting to the button text.
-        :raises AssertionError: If the button or the modal form never appears.
-        :raises ValueError: If a card header is named for a button given as a locator.
+        :param within: The region to scope the control to, when the page holds
+            more than one control of that name.
+        :param label: The spotlight caption, defaulting to the control text.
+        :raises AssertionError: If the control or the modal form never appears.
+        :raises ValueError: If a region is named for a control given as a locator.
         """
 
         is_named = isinstance(button, str)
 
         if within and not is_named:
-            message = 'within scopes a button by its text, so it needs a button name'
+            message = 'within scopes a control by its text, so it needs a control name'
             raise ValueError(message)
 
         opener = self._opener(button, within=within) if is_named else button
@@ -230,6 +284,31 @@ class Modal:
 
         self.demo.page.wait_for_timeout(OPEN_SETTLE_WAIT_MS)
         self.demo.pause()
+
+    def open_with(self, trigger: Locator, *, reveals_text: str) -> None:
+        """
+        A method that clicks a trigger until the modal it opens is showing.
+
+        A trigger bound to a client-side handler can be clicked before the handler
+        is listening, which opens nothing, so the click repeats until the option it
+        reveals is on the page.
+
+        :param trigger: The locator for the element that opens the modal.
+        :param reveals_text: The exact text of an option the open modal shows.
+        :raises AssertionError: If the modal never opens.
+        """
+
+        trigger_until_visible(trigger.click, self.option(reveals_text))
+
+    def option(self, text: str) -> Locator:
+        """
+        A method that gets the option a text names.
+
+        :param text: The exact text of the option.
+        :return: The locator for the option.
+        """
+
+        return self.content.get_by_text(text, exact=True)
 
     def submit(self, button: str = 'Submit', *, shot: str = '') -> None:
         """

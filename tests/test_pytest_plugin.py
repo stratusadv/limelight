@@ -348,12 +348,24 @@ def test_frame_renderer_registers_then_unregisters_for_the_page() -> None:
 
 def test_the_session_fixtures_carry_the_defaults() -> None:
     assert fixture_function(pytest_plugin.demo_config)() == DemoConfig.from_env()
-    assert fixture_function(pytest_plugin.demo_console_error_ignored_fragments)() == (
+    assert fixture_function(pytest_plugin.demo_console_error_ignored_fragments)(()) == (
         pytest_plugin.CONSOLE_ERROR_IGNORED_FRAGMENTS
     )
+    assert fixture_function(pytest_plugin.demo_console_error_ignored_fragments_extra)() == ()
     assert fixture_function(pytest_plugin.demo_viewport)() == {'width': 1920, 'height': 954}
     assert fixture_function(pytest_plugin.demo_viewport_video)() == {'width': 1920, 'height': 1080}
     assert fixture_function(pytest_plugin.demo_window_size)() == {'width': 1920, 'height': 1080}
+
+
+def test_a_project_adds_to_the_ignored_fragments_rather_than_replacing_them() -> None:
+    fragments = fixture_function(pytest_plugin.demo_console_error_ignored_fragments)(
+        ('fonts.gstatic.com',),
+    )
+
+    assert fragments[-1] == 'fonts.gstatic.com'
+
+    for fragment in pytest_plugin.CONSOLE_ERROR_IGNORED_FRAGMENTS:
+        assert fragment in fragments
 
 
 def test_the_frame_endpoint_fixture_offers_a_free_port() -> None:

@@ -15,6 +15,7 @@ from limelight.django import (
     auth_backend,
     force_login,
     sign_in,
+    visit,
     wait_until,
 )
 
@@ -232,6 +233,42 @@ def test_sign_in_honors_overridden_selectors(monkeypatch: pytest.MonkeyPatch) ->
     assert page.role_queries == [('button', 'Log in', False)]
 
 
+def test_visit_signs_the_user_in_then_opens_the_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    store = FakeSessionStore()
+    calls: list[tuple[str, object]] = []
+
+    session_engine_install(monkeypatch, store)
+    reverse_stub_install(monkeypatch, calls)
+
+    page = FakePage()
+
+    visit(page.as_page(), live_server=FakeLiveServer(), user=FakeUser(), route='home:dashboard')
+
+    assert store.values[SESSION_KEY] == '7'
+    assert store.values[HASH_SESSION_KEY] == 'hash'
+    assert calls == [('home:dashboard', None)]
+    assert page.goto_urls == ['http://localhost:9999/home:dashboard/']
+
+
+def test_visit_passes_the_route_arguments_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, object]] = []
+
+    session_engine_install(monkeypatch, FakeSessionStore())
+    reverse_stub_install(monkeypatch, calls)
+
+    page = FakePage()
+
+    visit(
+        page.as_page(),
+        live_server=FakeLiveServer(),
+        user=FakeUser(),
+        route='order:detail',
+        pk=3,
+    )
+
+    assert calls == [('order:detail', {'pk': 3})]
+
+
 def test_wait_until_returns_as_soon_as_the_predicate_holds() -> None:
     page = FakePage()
     outcomes = [False, True]
@@ -244,7 +281,7 @@ def test_wait_until_returns_as_soon_as_the_predicate_holds() -> None:
 def test_wait_until_raises_once_attempts_are_exhausted() -> None:
     page = FakePage()
 
-    with pytest.raises(AssertionError, match='condition not met after 750ms'):
+    with pytest.raises(AssertionError, match='condition did not hold after 750ms'):
         wait_until(page.as_page(), lambda: False, attempt_count_max=3, interval_ms=250)
 
     assert page.waits_ms == [250, 250, 250]

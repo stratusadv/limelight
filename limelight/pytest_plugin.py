@@ -306,14 +306,35 @@ def demo_config() -> DemoConfig:
 
 
 @pytest.fixture(scope='session')
-def demo_console_error_ignored_fragments() -> tuple[str, ...]:
+def demo_console_error_ignored_fragments(
+    demo_console_error_ignored_fragments_extra: tuple[str, ...],
+) -> tuple[str, ...]:
     """
     A fixture that supplies the console errors every test tolerates.
+
+    A project adds its own by overriding the extra fragments rather than this
+    fixture, so an error the plugin learns to tolerate later is not lost to a
+    project that replaced the whole list.
+
+    :param demo_console_error_ignored_fragments_extra: The fragments the project adds.
+    :return: The text of an error that is not a failure.
+    """
+
+    return CONSOLE_ERROR_IGNORED_FRAGMENTS + demo_console_error_ignored_fragments_extra
+
+
+@pytest.fixture(scope='session')
+def demo_console_error_ignored_fragments_extra() -> tuple[str, ...]:
+    """
+    A fixture that supplies the console errors this project tolerates.
+
+    The base implementation supplies none, so a project whose pages log an error
+    it cannot fix overrides this rather than the list it is added to.
 
     :return: The text of an error that is not a failure.
     """
 
-    return CONSOLE_ERROR_IGNORED_FRAGMENTS
+    return ()
 
 
 @pytest.fixture(scope='session')

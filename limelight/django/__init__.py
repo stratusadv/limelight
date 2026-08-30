@@ -238,11 +238,41 @@ def sign_in(
     page.wait_for_load_state('networkidle')
 
 
+def visit(
+    page: Page,
+    *,
+    live_server: LiveServer,
+    user: SessionUser,
+    route: str,
+    **url_kwargs: object,
+) -> None:
+    """
+    A function that signs a user in and opens a route in one step.
+
+    This is the plain-page counterpart to a demo: a test that drives the app
+    without narrating it needs the same session and the same route reversal, but
+    none of the overlay a Demo carries.
+
+    :param page: The page the route is opened in.
+    :param live_server: The server the route is served from.
+    :param user: The user to sign in as.
+    :param route: The name of the route to reverse.
+    :param url_kwargs: The arguments the route takes.
+    """
+
+    force_login(page, live_server=live_server, user=user)
+
+    path = reverse(route, kwargs=url_kwargs or None)
+
+    page.goto(f'{live_server.url}{path}')
+
+
 def wait_until(
     page: Page,
     predicate: Callable[[], bool],
     *,
     attempt_count_max: int = barriers.WAIT_ATTEMPT_COUNT_MAX,
+    description: str = '',
     interval_ms: int = barriers.WAIT_INTERVAL_MS_DEFAULT,
 ) -> None:
     """
@@ -251,6 +281,7 @@ def wait_until(
     :param page: The page whose timer paces the polling.
     :param predicate: The condition polled between waits.
     :param attempt_count_max: The number of times the condition is polled.
+    :param description: What the condition is waiting for, named in the failure.
     :param interval_ms: The time waited between polls.
     :raises AssertionError: If the condition never holds.
     """
@@ -259,5 +290,6 @@ def wait_until(
         database_resilient(predicate),
         page.wait_for_timeout,
         attempt_count_max=attempt_count_max,
+        description=description,
         interval_ms=interval_ms,
     )

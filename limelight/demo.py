@@ -4,6 +4,7 @@ import contextlib
 
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import urlencode
 
 from playwright.sync_api import (
     Error as PlaywrightError,
@@ -28,7 +29,7 @@ from limelight.overlay.playback import Playback
 from limelight.transcript import EventName, Transcript
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Mapping, Sequence
 
     from playwright.sync_api import Locator, Page
 
@@ -82,6 +83,7 @@ class Demo:
         *,
         name: str,
         config: DemoConfig | None = None,
+        init_scripts: Sequence[str] = (),
         narrator: Narrator | None = None,
         theme: Theme | None = None,
         user: object = None,
@@ -96,6 +98,8 @@ class Demo:
         :param application: The application under test.
         :param name: The name of the demo, which names its directory under .demos.
         :param config: The configuration for the run, or None to read the environment.
+        :param init_scripts: The scripts run on every document the demo opens, for the
+            chrome a recording is better off without.
         :param narrator: The narrator the actions are performed through, or None to build one.
         :param theme: The palette the overlay draws with, or None for the default.
         :param user: The user the demo is signed in as.
@@ -112,13 +116,14 @@ class Demo:
         self.application = application
         self.config = config
         self.directory = Path(DIRECTORY_ROOT) / name
+        self.init_scripts = tuple(init_scripts)
         self.page = page
         self.user = user
 
         self._renderer: FrameRenderer | None = None
         self._transcript: Transcript | None = None
 
-        page.add_init_script(PRINT_STUB_SCRIPT)
+        self._page_prepared(page)
 
         if config.narrated:
             self._transcript = Transcript(self.directory / TRANSCRIPT_FILE_NAME)
@@ -171,6 +176,18 @@ class Demo:
 
         if self._transcript is not None:
             self._transcript.record(event, {'target': locator_label(locator), **detail})
+
+    def _page_prepared(self, page: Page) -> None:
+        """
+        A method that installs the scripts every document the demo opens is given.
+
+        :param page: The page the scripts are installed on.
+        """
+
+        page.add_init_script(PRINT_STUB_SCRIPT)
+
+        for init_script in self.init_scripts:
+            page.add_init_script(init_script)
 
     def _page_settled(self) -> None:
         """
@@ -238,7 +255,13 @@ class Demo:
         self._record_action(EventName.FILL, locator, value=value)
         self._narrator.fill(locator, value)
 
-    def goto(self, route: str, **url_kwargs: object) -> None:
+    def goto(
+        self,
+        route: str,
+        *,
+        query: Mapping[str, object] | None = None,
+        **url_kwargs: object,
+    ) -> None:
         """
         A method that signs the user in and navigates to a route.
 
@@ -247,6 +270,7 @@ class Demo:
         the destination.
 
         :param route: The route to navigate to.
+        :param query: The query string parameters appended to the URL, or None for none.
         :param url_kwargs: The arguments filled into the route.
         :raises ValueError: If the route is empty.
         """
@@ -259,6 +283,10 @@ class Demo:
         self.application.login(self.page, self.user)
 
         url = self.application.url(route, **url_kwargs)
+
+        if query:
+            url = f'{url}?{urlencode(query)}'
+
         self.page.goto(url)
 
     def hover(self, locator: Locator) -> None:
@@ -473,7 +501,7 @@ class Demo:
         :param page: The page the demo drives from here on.
         """
 
-        page.add_init_script(PRINT_STUB_SCRIPT)
+        self._page_prepared(page)
 
         self.page = page
 
@@ -538,6 +566,7 @@ class Demo:
         predicate: Callable[[], bool],
         *,
         attempt_count_max: int = barriers.WAIT_ATTEMPT_COUNT_MAX,
+        description: str = '',
         interval_ms: int = barriers.WAIT_INTERVAL_MS_DEFAULT,
     ) -> None:
         """
@@ -548,6 +577,7 @@ class Demo:
 
         :param predicate: The condition polled between holds.
         :param attempt_count_max: The number of times the condition is polled.
+        :param description: What the condition is waiting for, named in the failure.
         :param interval_ms: The time held between polls.
         :raises AssertionError: If the condition never holds.
         """
@@ -556,6 +586,7 @@ class Demo:
             predicate,
             self._narrator.wait,
             attempt_count_max=attempt_count_max,
+            description=description,
             interval_ms=interval_ms,
         )
 

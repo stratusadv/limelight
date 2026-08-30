@@ -96,6 +96,69 @@ def test_goto_forwards_url_kwargs() -> None:
     assert application.url_requests == [('order:detail', {'pk': 7})]
 
 
+def test_goto_appends_a_query_string() -> None:
+    demo, page, _, _ = demo_build()
+
+    query = {'status': 'open', 'page': 2}
+
+    demo.goto('order:list', query=query)
+
+    assert page.goto_urls == ['http://stage.test/order:list?status=open&page=2']
+
+
+def test_goto_appends_a_query_string_beside_url_kwargs() -> None:
+    demo, page, application, _ = demo_build()
+
+    query = {'tab': 'payments'}
+
+    demo.goto('order:detail', query=query, pk=7)
+
+    assert application.url_requests == [('order:detail', {'pk': 7})]
+    assert page.goto_urls == ['http://stage.test/order:detail?tab=payments']
+
+
+def test_goto_without_a_query_leaves_the_url_alone() -> None:
+    demo, page, _, _ = demo_build()
+
+    demo.goto('order:list', query={})
+
+    assert page.goto_urls == ['http://stage.test/order:list']
+
+
+def test_init_scripts_are_installed_beside_the_print_stub() -> None:
+    page = FakePage()
+    scripts = ('window.hideChrome = true;',)
+
+    Demo(
+        page.as_page(),
+        FakeApplication(),
+        name='demo',
+        config=DemoConfig(),
+        init_scripts=scripts,
+    )
+
+    assert page.init_scripts == ['window.print = () => {};', 'window.hideChrome = true;']
+
+
+def test_init_scripts_are_reinstalled_on_a_page_the_demo_switches_to() -> None:
+    page = FakePage()
+    scripts = ('window.hideChrome = true;',)
+
+    demo = Demo(
+        page.as_page(),
+        FakeApplication(),
+        name='demo',
+        config=DemoConfig(),
+        init_scripts=scripts,
+    )
+
+    opened = FakePage()
+
+    demo.switch_page(opened.as_page())
+
+    assert opened.init_scripts == ['window.print = () => {};', 'window.hideChrome = true;']
+
+
 def test_cards_delegate_to_the_narrator(demos_root: Path) -> None:
     demo, _, _, narrator = demo_build()
 

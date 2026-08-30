@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, cast
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from limelight.barriers import (
+    requests_settled,
     trigger_until_navigation,
     trigger_until_response,
     trigger_until_visible,
@@ -205,7 +206,7 @@ def test_wait_until_holds_for_the_interval_between_attempts() -> None:
 def test_wait_until_raises_once_attempts_are_exhausted() -> None:
     holds: list[int] = []
 
-    with pytest.raises(AssertionError, match='condition not met after 750ms'):
+    with pytest.raises(AssertionError, match='condition did not hold after 750ms'):
         wait_until(lambda: False, holds.append, attempt_count_max=3, interval_ms=250)
 
     assert holds == [250, 250, 250]
@@ -232,3 +233,122 @@ def test_trigger_until_response_matches_on_a_url_fragment() -> None:
 
     assert predicate(SimpleNamespace(url='http://stage.test/orders/1')) is True
     assert predicate(SimpleNamespace(url='http://stage.test/customers/1')) is False
+
+
+def test_wait_until_names_the_condition_it_was_given() -> None:
+    description = 'the sync bridge hook for the renamed species'
+
+    with pytest.raises(AssertionError, match=f'{description} did not hold after 750ms'):
+        wait_until(
+            lambda: False,
+            lambda ms: None,
+            attempt_count_max=3,
+            description=description,
+            interval_ms=250,
+        )
+
+
+def request_of(url: str) -> object:
+    return SimpleNamespace(url=url)
+
+
+def test_requests_settled_returns_once_the_tallied_request_finishes() -> None:
+    page = FakePage()
+
+    with requests_settled(page.as_page(), url_fragment='/dg/'):
+        page.emit('request', request_of('http://stage.test/dg/field/'))
+        page.emit('requestfinished', request_of('http://stage.test/dg/field/'))
+
+    assert page.waits_ms == []
+
+
+def test_requests_settled_ignores_a_request_the_fragment_does_not_name() -> None:
+    page = FakePage()
+
+    with requests_settled(page.as_page(), url_fragment='/dg/'):
+        page.emit('request', request_of('http://stage.test/static/app.css'))
+
+    assert page.waits_ms == []
+
+
+def test_requests_settled_counts_a_failed_request_as_answered() -> None:
+    page = FakePage()
+
+    with requests_settled(page.as_page(), url_fragment='/dg/'):
+        page.emit('request', request_of('http://stage.test/dg/field/'))
+        page.emit('requestfailed', request_of('http://stage.test/dg/field/'))
+
+    assert page.waits_ms == []
+
+
+def test_requests_settled_waits_for_every_request_of_a_burst() -> None:
+    page = FakePage()
+
+    with requests_settled(page.as_page(), url_fragment='/dg/', timeout_ms=50):
+        page.emit('request', request_of('http://stage.test/dg/one/'))
+        page.emit('request', request_of('http://stage.test/dg/two/'))
+        page.emit('requestfinished', request_of('http://stage.test/dg/one/'))
+        page.emit('requestfinished', request_of('http://stage.test/dg/two/'))
+
+    assert page.waits_ms == []
+
+
+def test_requests_settled_raises_when_a_request_never_finishes() -> None:
+    page = FakePage()
+
+    with (
+        pytest.raises(AssertionError, match='the requests to "/dg/" never settled'),
+        requests_settled(page.as_page(), url_fragment='/dg/', timeout_ms=20),
+    ):
+        page.emit('request', request_of('http://stage.test/dg/field/'))
+
+
+def test_requests_settled_detaches_its_listeners_on_the_way_out() -> None:
+    page = FakePage()
+
+    with requests_settled(page.as_page(), url_fragment='/dg/'):
+        pass
+
+    assert page.listeners == {'request': [], 'requestfinished': [], 'requestfailed': []}
+
+
+def test_requests_settled_detaches_its_listeners_after_a_failure() -> None:
+    page = FakePage()
+
+    with (
+        pytest.raises(AssertionError),
+        requests_settled(page.as_page(), url_fragment='/dg/', timeout_ms=20),
+    ):
+        page.emit('request', request_of('http://stage.test/dg/field/'))
+
+    assert page.listeners == {'request': [], 'requestfinished': [], 'requestfailed': []}
+
+
+def test_requests_settled_rejects_an_empty_fragment() -> None:
+    page = FakePage()
+
+    with (
+        pytest.raises(ValueError, match='url_fragment must not be empty'),
+        requests_settled(page.as_page(), url_fragment=' '),
+    ):
+        pass
+
+
+def test_requests_settled_rejects_a_non_positive_timeout() -> None:
+    page = FakePage()
+
+    with (
+        pytest.raises(ValueError, match='timeout_ms must be positive: 0'),
+        requests_settled(page.as_page(), url_fragment='/dg/', timeout_ms=0),
+    ):
+        pass
+
+
+def test_requests_settled_rejects_a_non_positive_interval() -> None:
+    page = FakePage()
+
+    with (
+        pytest.raises(ValueError, match='interval_ms must be positive: 0'),
+        requests_settled(page.as_page(), url_fragment='/dg/', interval_ms=0),
+    ):
+        pass
