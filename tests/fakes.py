@@ -163,6 +163,7 @@ class FakeMouse:
 class FakePage:
     def __init__(self) -> None:
         self.context = FakeBrowserContext()
+        self.control_covers = False
         self.control_peeks: list[Mapping[str, object] | None] = []
         self.control_states: list[Mapping[str, object] | None] = []
         self.evaluations: list[tuple[str, object]] = []
@@ -207,6 +208,9 @@ class FakePage:
     def _function_result(self, expression: str) -> object:
         if 'selectShow(' in expression:
             return {'x': 30.0, 'y': 60.0}
+
+        if 'controlCovers(' in expression:
+            return self.control_covers
 
         if 'controlPeek(' in expression:
             return self._control_peek_next()

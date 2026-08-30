@@ -25,6 +25,17 @@ let apiBuild = (styleNode) => ({
     captionRemove: () => {
         elementRemove('limelight-caption');
     },
+    controlCovers: (data) => {
+        let bar = document.getElementById('limelight-control');
+
+        if (bar === null || bar.classList.contains('hidden')) {
+            return false;
+        }
+
+        let rect = bar.getBoundingClientRect();
+
+        return data.x >= rect.left && data.x <= rect.right && data.y >= rect.top && data.y <= rect.bottom;
+    },
     controlHide: () => {
         let bar = document.getElementById('limelight-control');
 

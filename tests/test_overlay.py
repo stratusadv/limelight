@@ -256,6 +256,48 @@ def test_click_forced_presses_the_mouse_without_a_hit_test() -> None:
     assert page.mouse.actions == [('move', 120.0, 210.0, 1), ('down',), ('up',)]
 
 
+def test_click_hides_the_control_bar_while_it_covers_the_point() -> None:
+    page = FakePage()
+    page.control_covers = True
+    overlay = overlay_build(page)
+
+    box: Mapping[str, float] = {'x': 100, 'y': 200, 'width': 40, 'height': 20}
+    boxes = [box]
+    locator = FakeLocator(boxes=boxes)
+
+    overlay.click(locator.as_locator())
+
+    control_expressions = [
+        expression
+        for expression, _ in page.evaluations
+        if 'controlHide(' in expression or 'controlShow(' in expression
+    ]
+
+    assert len(control_expressions) == 2
+    assert 'controlHide(' in control_expressions[0]
+    assert 'controlShow(' in control_expressions[1]
+    assert page.mouse.actions == [('move', 120.0, 210.0, 1), ('down',), ('up',)]
+
+
+def test_click_leaves_the_control_bar_alone_when_it_is_clear_of_the_point() -> None:
+    page = FakePage()
+    overlay = overlay_build(page)
+
+    box: Mapping[str, float] = {'x': 100, 'y': 200, 'width': 40, 'height': 20}
+    boxes = [box]
+    locator = FakeLocator(boxes=boxes)
+
+    overlay.click(locator.as_locator())
+
+    control_expressions = [
+        expression
+        for expression, _ in page.evaluations
+        if 'controlHide(' in expression or 'controlShow(' in expression
+    ]
+
+    assert control_expressions == []
+
+
 def test_click_scrolls_target_into_view_first() -> None:
     page = FakePage()
     overlay = overlay_build(page)
@@ -571,6 +613,7 @@ def test_select_without_the_option_label_skips_the_dropdown() -> None:
 def test_javascript_asset_defines_cursor_and_peek() -> None:
     assert 'cursorMove' in OVERLAY_JAVASCRIPT
     assert 'cursorPulse' in OVERLAY_JAVASCRIPT
+    assert 'controlCovers' in OVERLAY_JAVASCRIPT
     assert 'controlPeek' in OVERLAY_JAVASCRIPT
     assert 'sentiment-' in OVERLAY_JAVASCRIPT
     assert 'getAnimations' in OVERLAY_JAVASCRIPT

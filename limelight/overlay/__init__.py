@@ -159,7 +159,8 @@ class Overlay:
 
         The click is delivered at the point only when the point reaches the element, so
         an element under a sticky header is clicked through Playwright instead of at a
-        coordinate the page would hand to the header.
+        coordinate the page would hand to the header. The control bar is hidden while
+        it covers the point, because it belongs to the viewer rather than to the page.
 
         :param locator: The locator for the element to click.
         :param force: Whether to click without waiting for the element to be actionable.
@@ -174,10 +175,30 @@ class Overlay:
 
             return
 
+        covered = self._control_covers(point)
+
+        if covered:
+            self._bridge.call('controlHide')
+
         if force or self._cursor.hits(locator, point):
             self._cursor.press(point)
         else:
             locator.click()
+
+        if covered:
+            self._bridge.call('controlShow')
+
+    def _control_covers(self, point: tuple[float, float]) -> bool:
+        """
+        A method that reports whether the control bar sits over a point.
+
+        :param point: The page coordinates to test.
+        :return: True if the control bar covers the point, False otherwise.
+        """
+
+        argument = {'x': point[0], 'y': point[1]}
+
+        return bool(self._bridge.call('controlCovers', argument))
 
     def _scroll(self, locator: Locator) -> None:
         """
