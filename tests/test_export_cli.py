@@ -37,7 +37,7 @@ def test_main_writes_the_text_exports_without_touching_the_encoder(tmp_path: Pat
 
     assert exit_code == 0
     assert (directory / 'chapters.txt').is_file()
-    assert (directory / 'subtitles.vtt').is_file()
+    assert not (directory / 'subtitles.vtt').exists()
     assert (directory / 'walkthrough.md').is_file()
     assert encoder.runs == []
 
@@ -51,6 +51,7 @@ def test_main_subtitles_flag_burns_captions(tmp_path: Path) -> None:
     exit_code = main([str(directory), '--subtitles'], encoder=encoder.as_encoder())
 
     assert exit_code == 0
+    assert (directory / 'subtitles.vtt').is_file()
     assert len(encoder.runs) == 1
     assert encoder.runs[0][:2] == ['-i', str(directory / 'video.mp4')]
     assert encoder.runs[0][-1] == str(directory / 'render.mp4')

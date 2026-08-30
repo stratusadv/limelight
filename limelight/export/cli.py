@@ -48,6 +48,10 @@ def main(argv: Sequence[str] | None = None, *, encoder: Encoder | None = None) -
     The video render is run whenever audio or subtitles are asked for, because both
     are laid over the frames rather than shipped beside them.
 
+    The subtitle file is written only when it is asked for, because a player that
+    finds one beside the video loads it on its own and draws the narration a second
+    time under the caption already in the frames.
+
     :param argv: The arguments to parse, or None to read them from the process.
     :param encoder: The encoder the renders run through, or None to use ffmpeg on PATH.
     :return: The exit status of the command.
@@ -64,12 +68,14 @@ def main(argv: Sequence[str] | None = None, *, encoder: Encoder | None = None) -
 
     exports: list[Export] = [
         chapters_export(),
-        subtitles_export(),
         walkthrough_export(arguments.title),
     ]
 
     subtitles = directory / SUBTITLES_FILE_NAME if arguments.subtitles else None
     video_needed = subtitles is not None
+
+    if subtitles is not None:
+        exports.append(subtitles_export())
 
     if arguments.audio is not None:
         video_needed = True
