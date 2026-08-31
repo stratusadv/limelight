@@ -10,6 +10,8 @@ from limelight.components.confirm import Confirm
 if TYPE_CHECKING:
     from typing import Self
 
+    from playwright.sync_api import Locator
+
     from limelight.demo import Demo
 
 
@@ -90,7 +92,7 @@ def test_the_button_is_scoped_to_the_root_when_one_is_given() -> None:
     demo = FakeDemo()
     card = FakeNode('card')
 
-    DestructiveConfirm(demo.as_demo(), cast('object', card)).accept()
+    DestructiveConfirm(demo.as_demo(), cast('Locator', card)).accept()
 
     assert card.selectors == ['.app-btn-destructive']
     assert demo.node.selectors == []

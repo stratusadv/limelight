@@ -10,6 +10,8 @@ from limelight.components.dropdown import Dropdown
 if TYPE_CHECKING:
     from typing import Self
 
+    from playwright.sync_api import Locator
+
     from limelight.demo import Demo
 
 
@@ -98,7 +100,7 @@ def test_the_trigger_is_scoped_to_the_root_when_one_is_given() -> None:
     demo = FakeDemo()
     row = FakeNode('row')
 
-    RowMenu(demo.as_demo(), cast('object', row)).open()
+    RowMenu(demo.as_demo(), cast('Locator', row)).open()
 
     assert row.selectors == ['.bi-three-dots-vertical', '.dropdown-menu']
     assert demo.node.selectors == []
@@ -123,7 +125,7 @@ def test_the_menu_and_its_actions_are_scoped_to_the_root() -> None:
     demo = FakeDemo()
     row = FakeNode('row')
 
-    RowMenu(demo.as_demo(), cast('object', row)).choose('Delete')
+    RowMenu(demo.as_demo(), cast('Locator', row)).choose('Delete')
 
     assert row.selectors == ['.bi-three-dots-vertical', '.dropdown-menu', '.dropdown-item']
     assert demo.node.selectors == []

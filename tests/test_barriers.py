@@ -155,7 +155,7 @@ def test_response_matches_the_method_case_insensitively() -> None:
 
     trigger_until_response(page.as_page(), trigger, method='post')
 
-    matches = page.response_predicates[0]
+    matches = cast('Callable[[object], bool]', page.response_predicates[0])
 
     assert matches(SimpleNamespace(request=SimpleNamespace(method='POST'))) is True
     assert matches(SimpleNamespace(request=SimpleNamespace(method='GET'))) is False
