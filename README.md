@@ -1,8 +1,8 @@
 <p align="center">
     <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="assets/png/limelight-wordmark-1567x404.png">
-        <source media="(prefers-color-scheme: light)" srcset="assets/png/limelight-wordmark-1567x404.png">
-        <img alt="limelight" src="assets/png/limelight-wordmark-1567x404.png" width="320">
+        <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/stratusadv/limelight/main/assets/png/limelight-wordmark-1567x404.png">
+        <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/stratusadv/limelight/main/assets/png/limelight-wordmark-1567x404.png">
+        <img alt="limelight" src="https://raw.githubusercontent.com/stratusadv/limelight/main/assets/png/limelight-wordmark-1567x404.png" width="320">
     </picture>
 </p>
 
