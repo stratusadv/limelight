@@ -3,7 +3,7 @@ requires = ['uv_build>=0.12.7,<0.13']
 build-backend = 'uv_build'
 
 [project]
-name = "limelight"
+name = "playwright-limelight"
 version = "0.2.0"
 description = "Narrated Playwright demos that double as silent end-to-end tests"
 readme = "README.md"

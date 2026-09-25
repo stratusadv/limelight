@@ -23,17 +23,14 @@ Add limelight to your `pyproject.toml`:
 ```toml
 [project.optional-dependencies]
 development = [
-    "limelight[django,pytest]",
+    "playwright-limelight[django,pytest]",
 ]
-
-[tool.uv.sources]
-limelight = { git = "https://github.com/stratusadv/limelight", tag = "v0.2.0" }
 ```
 
 Install it directly with pip instead:
 
 ```
-pip install "limelight[django,pytest] @ git+https://github.com/stratusadv/limelight@v0.2.0"
+pip install "playwright-limelight[django,pytest]"
 ```
 
 The `django` extra installs the `limelight.django` adapter. The `pytest` extra installs `pytest` and `pytest-playwright` for the plugin.
