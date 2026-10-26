@@ -63,7 +63,7 @@ class JavascriptErrorLog:
         if message.type != 'error':
             return
 
-        location_url = message.location.get('url', '') if message.location else ''
+        location_url = message.location.get('url', '')
         text = f'{message.text} ({location_url})' if location_url else message.text
 
         for fragment in self._ignored_fragments:
