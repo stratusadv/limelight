@@ -10,7 +10,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, expect
 if TYPE_CHECKING:
     import re
 
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Generator
     from playwright.sync_api import Locator, Page, Request, Response
 
 
@@ -136,7 +136,7 @@ def requests_settled(
     url_fragment: str,
     timeout_ms: int = SETTLE_TIMEOUT_MS_DEFAULT,
     interval_ms: int = SETTLE_INTERVAL_MS_DEFAULT,
-) -> Iterator[None]:
+) -> Generator[None]:
     """
     A context manager that holds the block open until its background requests finish.
 

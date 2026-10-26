@@ -9,7 +9,7 @@ from playwright.sync_api import expect
 from limelight.barriers import trigger_until_visible
 
 if TYPE_CHECKING:
-    from playwright._impl._api_structures import AriaRole
+    from playwright._impl._internal_structures import AriaRole
     from playwright.sync_api import Locator
 
     from limelight.demo import Demo
