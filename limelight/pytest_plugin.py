@@ -9,16 +9,21 @@ from limelight.capture.renderer import FrameRenderer, renderer_register, rendere
 from limelight.config import DemoConfig
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping
 
     from playwright.sync_api import ConsoleMessage, Error, Page
 
 
-CONSOLE_ERROR_IGNORED_FRAGMENTS: tuple[str, ...] = (
-    'TypeError: Failed to fetch',
-)
+BROWSER_WINDOW_SIZED = 'chromium'
+
+CONSOLE_ERROR_IGNORED_FRAGMENTS: tuple[str, ...] = ('TypeError: Failed to fetch',)
 
 ERROR_MESSAGE_COUNT_MAX = 100
+
+FRAMES_UNDRIVEN_MESSAGE = (
+    'no Demo started the frame renderer, so nothing drew a frame for this page;'
+    ' a video run needs a Demo in each test, so select the demos with -k'
+)
 
 SCREENSHOT_MODE_DEFAULT = 'only-on-failure'
 TRACING_MODE_DEFAULT = 'retain-on-failure'
@@ -37,8 +42,8 @@ class JavascriptErrorLog:
     """
     A collector for the JavaScript errors a page reports during a test.
 
-    This class listens for console errors and uncaught exceptions. It holds a
-    capped number of each, so a page that errors in a loop cannot exhaust memory
+    This class listens for console errors and uncaught exceptions, and holds a
+    capped number of each so a page that errors in a loop cannot exhaust memory
     before the test ends.
     """
 
@@ -72,7 +77,8 @@ class JavascriptErrorLog:
 
         self._record(self._console_messages, text)
 
-    def _record(self, messages: list[str], text: str) -> None:
+    @staticmethod
+    def _record(messages: list[str], text: str) -> None:
         """
         A method that appends a message until the cap is reached.
 
@@ -148,7 +154,7 @@ def _artifact_option_default(config: pytest.Config, *, name: str, value: str) ->
 
     The option is only changed while it still holds the value the plugin ships,
     because a value the user chose has to survive: a default that overrode it would
-    turn a deliberate off into an artifact written on every run.
+    turn a deliberate off into an artifact written on each run.
 
     :param config: The pytest configuration.
     :param name: The name of the option, without its dashes.
@@ -168,8 +174,8 @@ def _browser_context_args_for(
     context_args: dict[str, Any],
     config: DemoConfig,
     *,
-    viewport: dict[str, int],
-    viewport_video: dict[str, int],
+    viewport: Mapping[str, int],
+    viewport_video: Mapping[str, int],
 ) -> dict[str, Any]:
     """
     A function that builds the browser context arguments for a run.
@@ -214,7 +220,8 @@ def _browser_type_launch_args_for(
     config: DemoConfig,
     endpoint: str,
     *,
-    window_size: dict[str, int],
+    browser_name: str = BROWSER_WINDOW_SIZED,
+    window_size: Mapping[str, int],
 ) -> dict[str, Any]:
     """
     A function that builds the browser launch arguments for a run.
@@ -222,6 +229,7 @@ def _browser_type_launch_args_for(
     :param launch_args: The arguments the Playwright plugin supplies.
     :param config: The configuration for the run.
     :param endpoint: The URL of the debugging endpoint a recorded run connects over.
+    :param browser_name: The name of the browser, which is given a window size only on Chromium.
     :param window_size: The window size a run that is watched uses.
     :return: The arguments the browser is launched with.
     """
@@ -235,6 +243,9 @@ def _browser_type_launch_args_for(
         arguments = [*launch_args.get('args', []), *arguments_frame_control]
 
         return {**launch_args, 'args': arguments, 'headless': True}
+
+    if browser_name != BROWSER_WINDOW_SIZED:
+        return launch_args
 
     arguments = [
         *launch_args.get('args', []),
@@ -271,6 +282,7 @@ def browser_context_args(
 
 @pytest.fixture(scope='session')
 def browser_type_launch_args(
+    browser_name: str,
     browser_type_launch_args: dict[str, Any],
     demo_config: DemoConfig,
     demo_frame_endpoint: str,
@@ -279,6 +291,7 @@ def browser_type_launch_args(
     """
     A fixture that supplies the browser launch arguments for the run.
 
+    :param browser_name: The name of the browser the Playwright plugin launches.
     :param browser_type_launch_args: The arguments the Playwright plugin supplies.
     :param demo_config: The configuration for the run.
     :param demo_frame_endpoint: The URL of the debugging endpoint a recorded run connects over.
@@ -290,6 +303,7 @@ def browser_type_launch_args(
         browser_type_launch_args,
         demo_config,
         demo_frame_endpoint,
+        browser_name=browser_name,
         window_size=demo_window_size,
     )
 
@@ -310,7 +324,7 @@ def demo_console_error_ignored_fragments(
     demo_console_error_ignored_fragments_extra: tuple[str, ...],
 ) -> tuple[str, ...]:
     """
-    A fixture that supplies the console errors every test tolerates.
+    A fixture that supplies the console errors each test tolerates.
 
     A project adds its own by overriding the extra fragments rather than this
     fixture, so an error the plugin learns to tolerate later is not lost to a
@@ -429,6 +443,29 @@ def frame_renderer(
 
 
 @pytest.fixture(autouse=True)
+def frame_renderer_guard(frame_renderer: FrameRenderer | None) -> Iterator[None]:
+    """
+    A fixture that fails a recorded test in which no demo started the frame renderer.
+
+    The check runs after the test and before the renderer fixture stops the capture,
+    so a renderer that is not running at that point is one no demo started.
+
+    :param frame_renderer: The renderer for the test, or None for a test that records nothing.
+    :return: The iterator that wraps the test.
+    """
+
+    yield
+
+    if frame_renderer is None:
+        return
+
+    if frame_renderer.is_running:
+        return
+
+    pytest.fail(FRAMES_UNDRIVEN_MESSAGE)
+
+
+@pytest.fixture(autouse=True)
 def javascript_error_guard(
     request: pytest.FixtureRequest,
     demo_console_error_ignored_fragments: tuple[str, ...],
@@ -468,8 +505,8 @@ def pytest_configure(config: pytest.Config) -> None:
     """
     A function that registers the plugin marker and its artifact defaults.
 
-    Tracing is left off for a recorded run, because the tracer takes its own
-    screenshots through the same compositor the renderer is driving frame by frame.
+    The tracer is left off for a recorded run, because it takes its own screenshots
+    through the same compositor the renderer is driving frame by frame.
 
     :param config: The pytest configuration.
     """

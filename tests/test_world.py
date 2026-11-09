@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from limelight.world import World
+from limelight import World
 
 
 class DemoWorld(World):
@@ -12,14 +12,14 @@ class DemoWorld(World):
         self._orders: dict[str, str] = {}
 
     def add_order(self, key: str) -> DemoWorld:
-        self._claim(self._orders, key, 'order')
+        self._claim(self._orders, key, kind='order')
 
         self._orders[key] = f'order:{key}'
 
         return self
 
     def order(self, key: str) -> str:
-        return self._require(self._orders, key, 'order')
+        return self._require(self._orders, key, kind='order')
 
 
 def test_a_world_carries_the_user_it_was_built_for() -> None:

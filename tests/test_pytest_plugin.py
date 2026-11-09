@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 from limelight import pytest_plugin
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from typing import Any
 
 
-WINDOW_SIZE = {'width': 1280, 'height': 720}
+WINDOW_SIZE = MappingProxyType({'width': 1280, 'height': 720})
 
 
 def test_launch_args_append_the_window_size_outside_video() -> None:
@@ -90,18 +90,24 @@ def test_silent_context_pins_the_viewport() -> None:
     assert result['reduced_motion'] == 'reduce'
 
 
+def config_of(stub: object) -> pytest.Config:
+    return cast('pytest.Config', stub)
+
+
 def config_build(
     *,
     addopts: tuple[str, ...] = (),
     arguments: tuple[str, ...] = (),
     **options: str,
-) -> Any:
-    return SimpleNamespace(
-        addinivalue_line=lambda name, line: None,
-        getini=lambda name: list(addopts),
+) -> pytest.Config:
+    config = SimpleNamespace(
+        addinivalue_line=lambda *_: None,
+        getini=lambda _: list(addopts),
         invocation_params=SimpleNamespace(args=list(arguments)),
         option=SimpleNamespace(**options),
     )
+
+    return config_of(config)
 
 
 def test_artifact_option_default_fills_in_an_unset_option() -> None:
@@ -228,7 +234,7 @@ def test_console_message_that_is_not_an_error_is_ignored() -> None:
     error_log.attach(page.as_page())
     page.emit('console', FakeConsoleMessage('chatter', kind='log'))
 
-    assert error_log.report() == ''
+    assert len(error_log.report()) == 0
 
 
 def test_ignored_fragment_drops_a_console_error() -> None:
@@ -238,7 +244,7 @@ def test_ignored_fragment_drops_a_console_error() -> None:
     error_log.attach(page.as_page())
     page.emit('console', FakeConsoleMessage('TypeError: Failed to fetch'))
 
-    assert error_log.report() == ''
+    assert len(error_log.report()) == 0
 
 
 def test_uncaught_error_is_reported_before_console_errors() -> None:
@@ -272,7 +278,7 @@ def test_detach_stops_the_recording() -> None:
     error_log.detach(page.as_page())
     page.emit('console', FakeConsoleMessage('boom'))
 
-    assert error_log.report() == ''
+    assert len(error_log.report()) == 0
     assert page.listeners == {'console': [], 'pageerror': []}
 
 
@@ -300,7 +306,9 @@ def test_error_guard_tolerates_a_fragment_the_marker_names() -> None:
 
     page.emit('console', FakeConsoleMessage('boom'))
 
-    assert next(guard, None) is None
+    outcome = next(guard, None)
+
+    assert outcome is None
 
 
 def test_error_guard_stands_aside_without_a_page() -> None:
@@ -309,24 +317,30 @@ def test_error_guard_stands_aside_without_a_page() -> None:
 
     next(guard)
 
-    assert next(guard, None) is None
+    outcome = next(guard, None)
+
+    assert outcome is None
 
 
 def test_frame_renderer_stands_aside_outside_video() -> None:
     fixture = fixture_function(pytest_plugin.frame_renderer)
     renderer = fixture(cast('Any', FakeRequest(FakePage())), DemoConfig(), 'ws://localhost:1')
+    yielded = next(renderer)
+    outcome = next(renderer, 'exhausted')
 
-    assert next(renderer) is None
-    assert next(renderer, 'exhausted') == 'exhausted'
+    assert yielded is None
+    assert outcome == 'exhausted'
 
 
 def test_frame_renderer_stands_aside_without_a_page() -> None:
     fixture = fixture_function(pytest_plugin.frame_renderer)
     config = DemoConfig(mode=DEMO_MODE_NARRATE, video=True)
     renderer = fixture(cast('Any', FakeRequest()), config, 'ws://localhost:1')
+    yielded = next(renderer)
+    outcome = next(renderer, 'exhausted')
 
-    assert next(renderer) is None
-    assert next(renderer, 'exhausted') == 'exhausted'
+    assert yielded is None
+    assert outcome == 'exhausted'
 
 
 def test_frame_renderer_registers_then_unregisters_for_the_page() -> None:
@@ -340,7 +354,9 @@ def test_frame_renderer_registers_then_unregisters_for_the_page() -> None:
     assert renderer is not None
     assert renderer_for(page.as_page()) is renderer
 
-    assert next(generator, 'exhausted') == 'exhausted'
+    outcome = next(generator, 'exhausted')
+
+    assert outcome == 'exhausted'
 
     with pytest.raises(LookupError):
         renderer_for(page.as_page())
@@ -390,9 +406,20 @@ def test_the_context_fixture_sizes_the_viewport_for_video() -> None:
 def test_the_launch_fixture_adds_the_window_size() -> None:
     launch_args = fixture_function(pytest_plugin.browser_type_launch_args)
 
-    result = launch_args({}, DemoConfig(), 'ws://localhost:1', {'width': 800, 'height': 600})
+    window_size = {'width': 800, 'height': 600}
+
+    result = launch_args('chromium', {}, DemoConfig(), 'ws://localhost:1', window_size)
 
     assert result == {'args': ['--window-size=800,600']}
+
+
+def test_the_launch_fixture_leaves_webkit_to_its_own_window() -> None:
+    launch_args = fixture_function(pytest_plugin.browser_type_launch_args)
+    window_size = {'width': 800, 'height': 600}
+
+    result = launch_args('webkit', {'slow_mo': 5}, DemoConfig(), 'ws://localhost:1', window_size)
+
+    assert result == {'slow_mo': 5}
 
 
 def test_the_context_scales_the_capture_to_the_quality() -> None:
@@ -432,5 +459,20 @@ def test_the_frame_renderer_takes_the_quality_settings() -> None:
     assert renderer is not None
     assert renderer.fps == 24
     assert renderer._screenshot == {'format': 'jpeg', 'quality': 75}
+
+    next(generator, None)
+
+
+def test_a_video_test_that_builds_no_demo_fails_with_the_reason() -> None:
+    page = FakePage()
+    fixture = fixture_function(pytest_plugin.frame_renderer)
+    config = DemoConfig(mode=DEMO_MODE_NARRATE, video=True)
+    generator = fixture(cast('Any', FakeRequest(page)), config, 'ws://localhost:1')
+    guard = fixture_function(pytest_plugin.frame_renderer_guard)(next(generator))
+
+    next(guard)
+
+    with pytest.raises(pytest.fail.Exception, match='no Demo started the frame renderer'):
+        next(guard, None)
 
     next(generator, None)

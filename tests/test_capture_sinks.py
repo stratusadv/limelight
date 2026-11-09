@@ -7,6 +7,7 @@ from typing_extensions import override
 from subprocess import TimeoutExpired
 from typing import TYPE_CHECKING, cast
 
+from limelight import RenderError
 from limelight.capture.sinks import STOP_TIMEOUT_SECONDS, DirectorySink, VideoSink
 
 from fakes import FakeEncoder, FakeProcess
@@ -27,9 +28,10 @@ class HangingProcess(FakeProcess):
 
     @override
     def wait(self, timeout: float | None = None) -> int:
-        if timeout is not None and not self.killed:
-            command = 'ffmpeg'
-            raise TimeoutExpired(command, timeout)
+        if timeout is not None:
+            if not self.killed:
+                command = 'ffmpeg'
+                raise TimeoutExpired(command, timeout)
 
         return self.returncode
 
@@ -38,10 +40,12 @@ def test_directory_sink_writes_numbered_frames(tmp_path: Path) -> None:
     sink = DirectorySink(tmp_path / 'frames')
 
     sink.open()
-    sink.write(0, b'first')
-    sink.write(1, b'second')
+
+    byte_counts = [sink.write(0, b'first'), sink.write(1, b'second')]
+
     sink.close()
 
+    assert byte_counts == [len(b'first'), len(b'second')]
     assert (tmp_path / 'frames' / 'frame-000000.png').read_bytes() == b'first'
     assert (tmp_path / 'frames' / 'frame-000001.png').read_bytes() == b'second'
 
@@ -51,9 +55,12 @@ def test_video_sink_pipes_frames_into_the_encoder(tmp_path: Path) -> None:
     sink = VideoSink(tmp_path / 'out' / 'video.mp4', encoder.as_encoder(), fps=30)
 
     sink.open()
-    sink.write(0, b'png')
+
+    byte_count = sink.write(0, b'png')
+
     sink.close()
 
+    assert byte_count == len(b'png')
     assert (tmp_path / 'out').is_dir()
     assert encoder.pipes[0][:4] == ['-f', 'image2pipe', '-framerate', '30']
     assert encoder.process.stdin.written == [b'png']
@@ -68,7 +75,7 @@ def test_video_sink_reports_encoder_failure(tmp_path: Path) -> None:
 
     sink.open()
 
-    with pytest.raises(RuntimeError, match='status 1'):
+    with pytest.raises(RenderError, match='status 1'):
         sink.close()
 
 
@@ -141,7 +148,7 @@ def test_a_hung_encoder_is_killed_rather_than_left_behind(tmp_path: Path) -> Non
     sink.open()
     sink.write(0, b'frame')
 
-    with pytest.raises(RuntimeError, match=f'did not finish within {STOP_TIMEOUT_SECONDS}s'):
+    with pytest.raises(RenderError, match=f'did not finish within {STOP_TIMEOUT_SECONDS}s'):
         sink.close()
 
     assert encoder.process.killed is True

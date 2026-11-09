@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="230" viewBox="0 0 200 230" role="img" aria-label="limelight">
+    <title>limelight</title>
+    <defs>
+        <linearGradient id="limelight-mark-on-light-1" gradientUnits="userSpaceOnUse" x1="92.08" y1="136.7" x2="92.08" y2="227.2">
+            <stop offset="0.000" stop-color="#168153"/>
+            <stop offset="0.349" stop-color="#64C516"/>
+            <stop offset="0.771" stop-color="#96D409"/>
+        </linearGradient>
+        <linearGradient id="limelight-mark-on-light-2" gradientUnits="userSpaceOnUse" x1="3.03" y1="93.7" x2="196.38" y2="93.7">
+            <stop offset="0.000" stop-color="#90D145"/>
+            <stop offset="0.328" stop-color="#43A271"/>
+            <stop offset="0.667" stop-color="#036A73"/>
+            <stop offset="0.849" stop-color="#003A42"/>
+        </linearGradient>
+        <linearGradient id="limelight-mark-on-light-3" gradientUnits="userSpaceOnUse" x1="32.69" y1="57.8" x2="124.08" y2="171.2">
+            <stop offset="0.000" stop-color="#A7D43B"/>
+            <stop offset="0.354" stop-color="#6ACE46"/>
+            <stop offset="0.693" stop-color="#0FBA96"/>
+            <stop offset="1.000" stop-color="#088184"/>
+        </linearGradient>
+    </defs>
+    <path fill="url(#limelight-mark-on-light-1)" d="M3.08 115L3.08 206.759C3.08 213.904 6.892 220.507 13.08 224.079C19.268 227.652 26.892 227.652 33.08 224.079L184.361 136.737L149.642 109Z"/>
+    <path fill="url(#limelight-mark-on-light-2)" d="M3.08 23.241C3.08 16.096 6.892 9.493 13.08 5.921C19.268 2.348 26.892 2.348 33.08 5.921L184.361 93.263C192.127 97.746 196.911 106.033 196.911 115C196.911 123.967 192.127 132.254 184.361 136.737L149.642 115L3.08 115Z"/>
+    <path fill="url(#limelight-mark-on-light-3)" d="M3.08 23.241L149.642 115L3.08 206.759Z"/>
+</svg>

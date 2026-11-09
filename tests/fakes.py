@@ -12,11 +12,11 @@ if TYPE_CHECKING:
 
     from limelight.capture.sinks import VideoSink
     from limelight.ffmpeg import Encoder
-    from limelight.ledger import LedgerRow
+    from limelight.ledger import Ledger
     from limelight.narrator import Narrator
 
 
-def fixture_function(fixture: object) -> Any:
+def fixture_function(fixture: object) -> Callable[..., Any]:
     return cast('Any', fixture).__wrapped__
 
 
@@ -80,11 +80,15 @@ class FakeLocator:
         self.select_labels: list[str] = []
         self.typed_sequences: list[tuple[str, float]] = []
         self.uncheck_count = 0
+        self.wait_outcomes: list[bool] = []
+        self.waits: list[tuple[str, float | None]] = []
 
     def as_locator(self) -> Locator:
         return cast('Locator', self)
 
     def bounding_box(self, *, timeout: float | None = None) -> FloatRect | None:
+        _ = timeout
+
         if not self.boxes:
             return None
 
@@ -96,6 +100,8 @@ class FakeLocator:
         self.check_count += 1
 
     def click(self, *, force: bool = False) -> None:
+        _ = force
+
         self.click_count += 1
 
     def evaluate(
@@ -105,6 +111,8 @@ class FakeLocator:
         *,
         timeout: float | None = None,
     ) -> object:
+        _ = (argument, timeout)
+
         if 'elementFromPoint' in expression:
             return self.point_hits
 
@@ -144,6 +152,16 @@ class FakeLocator:
 
     def uncheck(self) -> None:
         self.uncheck_count += 1
+
+    def wait_for(self, *, state: str = 'visible', timeout: float | None = None) -> None:
+        wait = (state, timeout)
+        self.waits.append(wait)
+
+        succeeds = self.wait_outcomes.pop(0) if self.wait_outcomes else True
+
+        if not succeeds:
+            message = f'locator never became {state}'
+            raise PlaywrightTimeoutError(message)
 
 
 class FakeMouse:
@@ -247,11 +265,15 @@ class FakePage:
         return {'result': self._function_result(expression)}
 
     def expect_navigation(self, *, url: object = None, timeout: int | None = None) -> FakeBarrier:
+        _ = (url, timeout)
+
         succeeds = self.navigation_outcomes.pop(0) if self.navigation_outcomes else True
 
         return FakeBarrier(succeeds=succeeds)
 
     def expect_response(self, predicate: object, *, timeout: int | None = None) -> FakeBarrier:
+        _ = timeout
+
         self.response_predicates.append(predicate)
 
         succeeds = self.response_outcomes.pop(0) if self.response_outcomes else True
@@ -300,15 +322,16 @@ class FakePage:
         self.listeners.get(event, []).remove(handler)
 
     def wait_for_load_state(self, state: str, *, timeout: float | None = None) -> None:
+        _ = timeout
+
         self.load_states.append(state)
 
     def wait_for_selector(self, selector: str, *, state: str = '') -> None:
         wait = (selector, state)
         self.selector_waits.append(wait)
 
-    def wait_for_timeout(self, ms: float) -> None:
-        self.waits_ms.append(ms)
-
+    def wait_for_timeout(self, timeout: float) -> None:
+        self.waits_ms.append(timeout)
 
 
 class FakeNarrator:
@@ -334,13 +357,13 @@ class FakeNarrator:
     def metrics(
         self,
         title: str,
-        rows: list[LedgerRow],
+        rows: list[Ledger.Row],
         *,
         kicker: str = '',
         subtitle: str = '',
-        ms: int | None = None,
+        hold_ms: int | None = None,
     ) -> None:
-        self.calls.append(('metrics', title, rows, kicker, subtitle, ms))
+        self.calls.append(('metrics', title, rows, kicker, subtitle, hold_ms))
 
     def narrate(
         self,
@@ -348,12 +371,12 @@ class FakeNarrator:
         *,
         body: str = '',
         step: str = '',
-        ms: int | None = None,
+        hold_ms: int | None = None,
     ) -> None:
-        self.calls.append(('narrate', title, body, step, ms))
+        self.calls.append(('narrate', title, body, step, hold_ms))
 
-    def pause(self, ms: int | None = None) -> None:
-        self.calls.append(('pause', ms))
+    def pause(self, hold_ms: int | None = None) -> None:
+        self.calls.append(('pause', hold_ms))
 
     def press(self, locator: Locator, key: str) -> None:
         self.calls.append(('press', locator, key))
@@ -376,9 +399,9 @@ class FakeNarrator:
         label: str = '',
         dim: bool = True,
         scroll: bool = True,
-        ms: int | None = None,
+        hold_ms: int | None = None,
     ) -> None:
-        self.calls.append(('spotlight', locator, label, dim, scroll, ms))
+        self.calls.append(('spotlight', locator, label, dim, scroll, hold_ms))
 
     def switch_page(self, page: Page) -> None:
         self.calls.append(('switch_page', page))
@@ -389,15 +412,15 @@ class FakeNarrator:
         *,
         kicker: str = '',
         subtitle: str = '',
-        ms: int | None = None,
+        hold_ms: int | None = None,
     ) -> None:
-        self.calls.append(('title', text, kicker, subtitle, ms))
+        self.calls.append(('title', text, kicker, subtitle, hold_ms))
 
     def uncheck(self, locator: Locator) -> None:
         self.calls.append(('uncheck', locator))
 
-    def wait(self, ms: int) -> None:
-        self.calls.append(('wait', ms))
+    def wait(self, hold_ms: int) -> None:
+        self.calls.append(('wait', hold_ms))
 
 
 class FakeEncoder:
@@ -424,6 +447,8 @@ class FakeProcess:
         self.returncode = 0
 
     def wait(self, timeout: float | None = None) -> int:
+        _ = timeout
+
         return self.returncode
 
 
@@ -435,21 +460,24 @@ class FakeStdin:
     def close(self) -> None:
         self.closed = True
 
-    def write(self, data: bytes) -> None:
+    def write(self, data: bytes) -> int:
         self.written.append(data)
+
+        return len(data)
 
 
 class FakeClock:
     def __init__(self) -> None:
         self.waits_ms: list[float] = []
 
-    def wait_ms(self, ms: float) -> None:
-        self.waits_ms.append(ms)
+    def wait_ms(self, duration_ms: float) -> None:
+        self.waits_ms.append(duration_ms)
 
 
 class FakeFrameRenderer:
     def __init__(self, *, fps: int = 60) -> None:
         self.fps = fps
+        self.frame_count = 0
         self.page_switches: list[object] = []
         self.sinks: list[VideoSink] = []
         self.stopped = False
@@ -464,5 +492,5 @@ class FakeFrameRenderer:
     def switch_page(self, page: object) -> None:
         self.page_switches.append(page)
 
-    def wait_ms(self, ms: float) -> None:
-        self.waits_ms.append(ms)
+    def wait_ms(self, duration_ms: float) -> None:
+        self.waits_ms.append(duration_ms)

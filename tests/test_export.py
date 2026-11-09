@@ -26,7 +26,7 @@ def test_text_export_writes_the_rendered_file(tmp_path: Path) -> None:
 
 def test_text_export_rejects_an_empty_file_name() -> None:
     with pytest.raises(ValueError, match='file_name'):
-        TextExport('', lambda events: '')
+        TextExport('', lambda _: '')
 
 
 def test_factories_satisfy_the_export_protocol() -> None:

@@ -97,7 +97,7 @@ class Cursor:
 
         return box_previous
 
-    def drag(self, *, x_start: float, x_end: float, y: float, ms: int) -> None:
+    def drag(self, *, x_start: float, x_end: float, y: float, duration_ms: int) -> None:
         """
         A method that drags the pointer along a horizontal path.
 
@@ -108,10 +108,10 @@ class Cursor:
         :param x_start: The horizontal position the drag begins at.
         :param x_end: The horizontal position the drag ends at.
         :param y: The vertical position the drag holds.
-        :param ms: The duration of the whole drag.
+        :param duration_ms: The duration of the whole drag.
         """
 
-        chunk_ms = max(1, ms // DRAG_CHUNK_COUNT)
+        chunk_ms = max(1, duration_ms // DRAG_CHUNK_COUNT)
         travel = x_end - x_start
         mouse = self._bridge.page.mouse
 
@@ -154,7 +154,8 @@ class Cursor:
 
         self._call('cursorHide')
 
-    def hits(self, locator: Locator, point: tuple[float, float]) -> bool:
+    @staticmethod
+    def hits(locator: Locator, point: tuple[float, float]) -> bool:
         """
         A method that reports whether a point lands on an element.
 
@@ -167,10 +168,10 @@ class Cursor:
         :return: True if the point reaches the element, False otherwise.
         """
 
-        argument = {'x': point[0], 'y': point[1]}
         hits = False
 
         with contextlib.suppress(PlaywrightError):
+            argument = {'x': point[0], 'y': point[1]}
             hits = bool(locator.evaluate(POINT_HIT_SCRIPT, argument, timeout=POINT_HIT_TIMEOUT_MS))
 
         return hits

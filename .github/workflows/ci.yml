@@ -24,16 +24,46 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra development
 
+      - name: Format
+        run: uv run ruff format --check examples limelight scripts tests
+
       - name: Lint
-        run: uv run ruff check limelight tests
+        run: uv run ruff check examples limelight scripts tests
 
       - name: Types
-        run: uv run ty check limelight tests
+        run: uv run ty check examples limelight tests
+
+  typescript:
+    name: TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Types
+        run: npx tsc --project tsconfig.json
+
+      - name: Lint
+        run: npx eslint --flag unstable_native_nodejs_ts_config --max-warnings 0 .
+
+      - name: Tests
+        run: node --test "src/**/*.test.ts"
+
+      - name: Bundles match the source
+        run: |
+          node build.ts
+          git diff --exit-code -- limelight/overlay/assets limelight/scripts
 
   tests:
     name: Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    needs: linting
+    needs: [linting, typescript]
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -58,6 +88,16 @@ jobs:
 
       - name: Run tests
         run: uv run --python ${{ matrix.python-version }} pytest -v
+
+      - name: Run examples
+        run: |
+          uv run --python ${{ matrix.python-version }} python examples/lost_click.py
+          uv run --python ${{ matrix.python-version }} python examples/order_approval.py
+          uv run --python ${{ matrix.python-version }} python examples/order_metrics.py
+          uv run --python ${{ matrix.python-version }} python examples/order_search.py
+          uv run --python ${{ matrix.python-version }} python examples/row_menu.py
+          uv run --python ${{ matrix.python-version }} pytest --quiet -p limelight.pytest_plugin examples/test_order_approval.py
+          uv run --python ${{ matrix.python-version }} python examples/voiceover_holds.py
 
   security:
     name: Security Scan

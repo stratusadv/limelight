@@ -10,4 +10,4 @@ def test_chapters_lists_title_events() -> None:
 
 
 def test_chapters_empty_without_title_events() -> None:
-    assert chapters_render([]) == ''
+    assert len(chapters_render([])) == 0

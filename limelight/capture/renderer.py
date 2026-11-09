@@ -6,29 +6,36 @@ import math
 import threading
 import time
 
-from typing import TYPE_CHECKING, Protocol
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, ClassVar, Protocol
 
 from playwright.async_api import async_playwright
 
+from limelight.errors import RenderError
+from limelight.javascript import script
+from limelight.limits import FRAME_COUNT_MAX
+
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable
+    from typing import Literal
 
     from playwright.async_api import Browser, CDPSession
     from playwright.sync_api import Page
 
     from limelight.capture.sinks import FrameSink
 
+    ColorScheme = Literal['dark', 'light']
 
-FRAME_COUNT_MAX = 1_000_000
+
+COLOR_SCHEME_DARK_SCRIPT = script('color_scheme_dark.js')
 FRAME_FPS_DEFAULT = 60
 FRAME_FPS_MAX = 240
-FRAME_TICKS_LEAD_MS = 60_000
 FRAME_TIMEOUT_SECONDS = 30
 
-NAVIGATION_POLL_SECONDS = 0.02
 NAVIGATION_SETTLE_SECONDS = 0.1
 
 READY_TIMEOUT_SECONDS = 30
+RENDER_STEP_COUNT_MAX = FRAME_COUNT_MAX * 2
 SCREENSHOT_FORMATS = ('jpeg', 'png', 'webp')
 SCREENSHOT_FORMAT_DEFAULT = 'jpeg'
 SCREENSHOT_QUALITY_DEFAULT = 100
@@ -38,22 +45,142 @@ STOP_TIMEOUT_SECONDS = 120
 TARGET_ATTACH_ATTEMPT_COUNT_MAX = 50
 TARGET_ATTACH_RETRY_SECONDS = 0.1
 THREAD_NAME = 'limelight-frames'
+VIRTUAL_TIME_STARVATION_COUNT_MAX = 1000
 WAIT_SLICE_MS = 5
-
-_renderers: dict[int, FrameRenderer] = {}
+WAIT_SLICE_COUNT_PER_FRAME_MAX = math.ceil(STALL_SECONDS_MAX * 1000 / WAIT_SLICE_MS)
 
 
 class FrameClock(Protocol):
     """A protocol for the clock a frame-paced demo advances its waits on."""
 
-    def wait_ms(self, ms: float) -> None:
+    def wait_ms(self, duration_ms: float) -> None:
         """
         A method that holds until the timeline has advanced by a duration.
 
-        :param ms: The duration to advance by.
+        :param duration_ms: The duration to advance by.
         """
 
         ...
+
+
+class _VirtualClock:
+    """
+    A clock the page reads in place of the wall clock.
+
+    This class turns on Chrome's virtual time for a target and advances it by one
+    interval per frame, so the page's timers, animations, and transitions run on the
+    timeline the frames are stamped with. The compositor otherwise measures each
+    frame against the real clock, and a render slower than real time sees each
+    frame as late and snaps or skips the transitions it was asked to draw.
+
+    The base and the elapsed time are kept per target across clocks, because a
+    frame stamped behind one the compositor has already seen is rejected, and a
+    second capture of the same page has to carry on from where the first left off.
+    """
+
+    _base_ms: ClassVar[dict[str, float]] = {}
+    _elapsed_ms: ClassVar[dict[str, float]] = {}
+
+    def __init__(self, session: CDPSession, *, target_id: str) -> None:
+        """
+        The constructor for the _VirtualClock class.
+
+        :param session: The session attached to the target the clock drives.
+        :param target_id: The target the elapsed time is kept against.
+        """
+
+        self._expired = asyncio.Event()
+        self._session = session
+        self._target_id = target_id
+
+        session.on('Emulation.virtualTimeBudgetExpired', self._expire)
+
+    def _expire(self, event: dict[str, object]) -> None:
+        """
+        A method that marks the granted budget as used up.
+
+        :param event: The event the browser sent, which carries nothing the clock needs.
+        """
+
+        _ = event
+
+        self._expired.set()
+
+    @property
+    def elapsed_ms(self) -> float:
+        """
+        A property that reports how far the target's virtual time has advanced.
+
+        :return: The milliseconds advanced since virtual time was turned on.
+        """
+
+        return self._elapsed_ms.get(self._target_id, 0.0)
+
+    @property
+    def ticks(self) -> float:
+        """
+        A property that reports the current virtual time as the compositor counts it.
+
+        :return: The timestamp to stamp the next frame with, in renderer ticks.
+        :raises RuntimeError: If the virtual time has fallen below zero.
+        """
+
+        ticks = self._base_ms.get(self._target_id, 0.0) + self.elapsed_ms
+
+        if ticks < 0:
+            message = f'virtual time must not run below zero: {ticks}'
+            raise RuntimeError(message)
+
+        return ticks
+
+    async def advanced(self, interval_ms: float) -> None:
+        """
+        A method that lets the page's time move forward by one interval.
+
+        :param interval_ms: The time the frame covers.
+        :raises TimeoutError: If the browser never reports the budget as used up.
+        """
+
+        parameters = {
+            'policy': 'advance',
+            'budget': interval_ms,
+            'maxVirtualTimeTaskStarvationCount': VIRTUAL_TIME_STARVATION_COUNT_MAX,
+        }
+
+        self._expired.clear()
+
+        await self._session.send('Emulation.setVirtualTimePolicy', parameters)
+        await asyncio.wait_for(self._expired.wait(), timeout=FRAME_TIMEOUT_SECONDS)
+
+        self._elapsed_ms[self._target_id] = self.elapsed_ms + interval_ms
+
+    async def paused(self) -> None:
+        """
+        A method that turns virtual time on, or holds it, and reads where it starts.
+
+        A base that differs from the one seen before means the page moved to a new
+        document, which reports the clock from its own start. The elapsed time is
+        carried over against the new base so the frame stamps stay continuous,
+        because a frame stamped behind one the compositor has already seen is
+        never completed. A base beyond the last stamp is a fresh renderer clock,
+        and the elapsed time starts over with it.
+        """
+
+        result = await self._session.send('Emulation.setVirtualTimePolicy', {'policy': 'pause'})
+        base_ms = float(result['virtualTimeTicksBase'])
+        ticks_before = self.ticks
+
+        self._base_ms[self._target_id] = base_ms
+        self._elapsed_ms[self._target_id] = max(0.0, ticks_before - base_ms)
+
+
+@dataclass(frozen=True)
+class _Attachment:
+    """A record of the session and the virtual clock attached to one target."""
+
+    clock: _VirtualClock
+    session: CDPSession
+    target_id: str
 
 
 class _NavigationWatch:
@@ -65,9 +192,14 @@ class _NavigationWatch:
     comes back blank or times out.
     """
 
-    def __init__(self) -> None:
-        """The constructor for the _NavigationWatch class."""
+    def __init__(self, *, clock: Callable[[], float] = time.monotonic) -> None:
+        """
+        The constructor for the _NavigationWatch class.
 
+        :param clock: The clock the settling period is measured on.
+        """
+
+        self._clock = clock
         self._frames_loading: set[str] = set()
         self._settled_at = 0.0
 
@@ -86,7 +218,7 @@ class _NavigationWatch:
         if self._frames_loading:
             return True
 
-        return time.monotonic() < self._settled_at
+        return self._clock() < self._settled_at
 
     def _started(self, event: dict[str, object]) -> None:
         """
@@ -107,7 +239,7 @@ class _NavigationWatch:
         self._frames_loading.discard(str(event.get('frameId', '')))
 
         if not self._frames_loading:
-            self._settled_at = time.monotonic() + NAVIGATION_SETTLE_SECONDS
+            self._settled_at = self._clock() + NAVIGATION_SETTLE_SECONDS
 
     async def watch(self, session: CDPSession) -> None:
         """
@@ -129,17 +261,20 @@ class FrameRenderer:
     A capture that drives the browser one frame at a time.
 
     This class runs its own thread with its own asyncio loop and its own connection
-    to the browser, and each frame is produced by asking the compositor for one at
-    a timestamp the renderer chooses. The timeline is therefore the renderer's
-    rather than the wall clock's, so a slow screenshot lengthens the recording
-    instead of dropping a frame from it.
+    to the browser. Each frame is produced by asking the compositor for one at a
+    timestamp the renderer chooses, so the timeline is the renderer's rather than the
+    wall clock's, and a slow screenshot lengthens the recording instead of dropping a
+    frame from it.
     """
+
+    registry: ClassVar[dict[int, FrameRenderer]] = {}
 
     def __init__(
         self,
         page: Page,
         *,
         endpoint: str,
+        clock: Callable[[], float] = time.monotonic,
         fps: int = FRAME_FPS_DEFAULT,
         screenshot_format: str = SCREENSHOT_FORMAT_DEFAULT,
         screenshot_quality: int = SCREENSHOT_QUALITY_DEFAULT,
@@ -149,6 +284,7 @@ class FrameRenderer:
 
         :param page: The page the frames are captured from.
         :param endpoint: The URL of the debugging endpoint the capture connects over.
+        :param clock: The clock the stall timeout is measured on.
         :param fps: The frame rate the timeline advances at.
         :param screenshot_format: The image format each frame is captured in.
         :param screenshot_quality: The quality of each frame, where the format takes one.
@@ -175,12 +311,13 @@ class FrameRenderer:
 
         if screenshot_quality > SCREENSHOT_QUALITY_MAX:
             message = (
-                f'screenshot_quality must not exceed {SCREENSHOT_QUALITY_MAX}:'
-                f' {screenshot_quality}'
+                f'screenshot_quality must not exceed {SCREENSHOT_QUALITY_MAX}: {screenshot_quality}'
             )
 
             raise ValueError(message)
 
+        self._clock = clock
+        self._color_scheme: ColorScheme = 'light'
         self._endpoint = endpoint
         self._error: BaseException | None = None
         self._fps = fps
@@ -193,7 +330,6 @@ class FrameRenderer:
         self._stop = threading.Event()
         self._target_id = ''
         self._thread: threading.Thread | None = None
-        self._ticks_last: dict[str, float] = {}
 
     @property
     def fps(self) -> int:
@@ -208,9 +344,9 @@ class FrameRenderer:
     @property
     def frame_count(self) -> int:
         """
-        A property that exposes how many frames have been written.
+        A property that exposes how many frames have been captured.
 
-        :return: The number of frames written so far.
+        :return: The number of frames captured so far.
         """
 
         return self._frame_count
@@ -235,14 +371,40 @@ class FrameRenderer:
 
         return self._thread is not None
 
+    async def _attached(self, browser: Browser, navigation: _NavigationWatch) -> _Attachment:
+        """
+        A method that attaches a session and a paused virtual clock to the current target.
+
+        :param browser: The browser the session is opened on.
+        :param navigation: The watch subscribed to the page events of the session.
+        :return: The attachment for the current target.
+        :raises RenderError: If no page carries the target.
+        """
+
+        target_id = self._target_id
+
+        session = await _session_attached(
+            browser,
+            color_scheme=self._color_scheme,
+            target_id=target_id,
+            endpoint=self._endpoint,
+            navigation=navigation,
+        )
+
+        clock = _VirtualClock(session, target_id=target_id)
+
+        await clock.paused()
+
+        return _Attachment(clock=clock, session=session, target_id=target_id)
+
     def _error_raised(self) -> None:
         """
         A method that re-raises whatever killed the capture thread.
 
         The error is cleared as it is raised, so a failure surfaces once at the first
-        call that notices it rather than at every call after.
+        call that notices it rather than at each call after.
 
-        :raises RuntimeError: If the capture thread failed.
+        :raises RenderError: If the capture thread failed.
         """
 
         error = self._error
@@ -253,22 +415,97 @@ class FrameRenderer:
         self._error = None
 
         message = 'the frame renderer failed'
-        raise RuntimeError(message) from error
+        raise RenderError(message) from error
 
-    def _run(self) -> None:
+    async def _frame_captured(
+        self,
+        attachment: _Attachment,
+        sink: FrameSink,
+        image_last: bytes,
+    ) -> bytes:
         """
-        A method that runs the capture loop on its own asyncio loop.
+        A method that captures one frame and writes it to the sink.
 
-        The ready flag is set on failure as well as on the first frame, because the
-        starting thread waits on it and would otherwise block until its timeout for a
-        capture that has already died.
+        :param attachment: The attachment the frame is captured through.
+        :param sink: The destination the frame is written to.
+        :param image_last: The image of the previous frame, or empty bytes before the first.
+        :return: The image written for this frame, or empty bytes if there is none yet.
+        :raises TimeoutError: If the compositor or the virtual clock does not answer in time.
+        :raises RenderError: If the sink writes less than the whole frame.
         """
 
-        try:
-            asyncio.run(self._render())
-        except BaseException as exception:
-            self._error = exception
-            self._ready.set()
+        image = await _frame_rendered(
+            attachment.session,
+            ticks=attachment.clock.ticks,
+            interval_ms=self._interval_ms,
+            screenshot=self._screenshot,
+        )
+
+        await attachment.clock.advanced(self._interval_ms)
+
+        image_kept = image or image_last
+
+        if image_kept:
+            byte_count = sink.write(self._frame_count, image_kept)
+
+            if byte_count != len(image_kept):
+                message = (
+                    f'frame {self._frame_count} was cut short: '
+                    f'{byte_count} of {len(image_kept)} bytes written'
+                )
+
+                raise RenderError(message)
+
+        self._frame_count += 1
+        self._ready.set()
+
+        return image_kept
+
+    async def _frames_captured(self, browser: Browser, sink: FrameSink) -> CDPSession:
+        """
+        A method that runs the frame loop on a connected browser.
+
+        The session is reattached when the renderer is switched to a new page, and no
+        frame is captured while a navigation is in progress.
+
+        :param browser: The browser the capture is connected to.
+        :param sink: The destination the frames are written to.
+        :return: The session attached when the renderer was stopped.
+        :raises RenderError: If no page carries the target, or a count reaches its maximum.
+        """
+
+        navigation = _NavigationWatch()
+        attachment = await self._attached(browser, navigation)
+        image_last = b''
+        navigated = False
+
+        for _ in range(RENDER_STEP_COUNT_MAX):
+            if self._stop.is_set():
+                return attachment.session
+
+            if self._frame_count >= FRAME_COUNT_MAX:
+                message = f'the frame renderer passed {FRAME_COUNT_MAX} frames; aborting'
+                raise RenderError(message)
+
+            if self._target_id != attachment.target_id:
+                await attachment.session.detach()
+
+                attachment = await self._attached(browser, navigation)
+
+            if navigation.in_progress:
+                navigated = True
+
+                await attachment.clock.advanced(self._interval_ms)
+            else:
+                if navigated:
+                    navigated = False
+
+                    await attachment.clock.paused()
+
+                image_last = await self._frame_captured(attachment, sink, image_last)
+
+        message = f'the frame renderer passed {RENDER_STEP_COUNT_MAX} steps; aborting'
+        raise RenderError(message)
 
     async def _render(self) -> None:
         """
@@ -276,11 +513,16 @@ class FrameRenderer:
 
         A frame is requested at each timestamp on the timeline and the last image is
         written again whenever the compositor returns nothing, so the recording keeps
-        its frame rate through a repaint that produces no new pixels. A navigation
-        pauses the loop, and the timeline is carried across the new document rather
-        than restarted, so the two halves of the recording stay contiguous.
+        its frame rate through a repaint that produces no new pixels. The page runs on
+        virtual time that advances one interval per frame, so its own animations keep
+        step with the capture however slow the machine is. A navigation pauses the
+        frames but keeps virtual time moving, because a paused page runs no tasks and
+        the new document would never finish loading; the timeline is carried across
+        the new document rather than restarted, so the two halves of the recording
+        stay contiguous.
 
-        :raises RuntimeError: If the renderer has no sink, or the frame count passes its maximum.
+        :raises RuntimeError: If the renderer has no sink.
+        :raises RenderError: If the frame count reaches its maximum.
         """
 
         sink = self._sink
@@ -291,88 +533,54 @@ class FrameRenderer:
 
         async with async_playwright() as playwright:
             browser = await playwright.chromium.connect_over_cdp(self._endpoint)
-            target_id = self._target_id
-            navigation = _NavigationWatch()
-            session = await _session_attached(
-                browser,
-                target_id=target_id,
-                endpoint=self._endpoint,
-                navigation=navigation,
-            )
-            ticks = _ticks_seeded(self._ticks_last, target_id, self._interval_ms)
-            image_last = b''
-
-            navigated = False
-
-            while not self._stop.is_set():
-                if self._frame_count >= FRAME_COUNT_MAX:
-                    message = f'the frame renderer passed {FRAME_COUNT_MAX} frames; aborting'
-                    raise RuntimeError(message)
-
-                if self._target_id != target_id:
-                    await session.detach()
-
-                    target_id = self._target_id
-
-                    session = await _session_attached(
-                        browser,
-                        target_id=target_id,
-                        endpoint=self._endpoint,
-                        navigation=navigation,
-                    )
-
-                    ticks = _ticks_seeded(self._ticks_last, target_id, self._interval_ms)
-
-                if navigation.in_progress:
-                    navigated = True
-
-                    await asyncio.sleep(NAVIGATION_POLL_SECONDS)
-
-                    continue
-
-                if navigated:
-                    navigated = False
-                    ticks = max(ticks + self._interval_ms, _ticks_now())
-
-                await _real_time_awaited(ticks)
-
-                image = await _frame_rendered(
-                    session,
-                    ticks=ticks,
-                    interval_ms=self._interval_ms,
-                    screenshot=self._screenshot,
-                )
-
-                self._ticks_last[target_id] = ticks
-                ticks += self._interval_ms
-
-                if image:
-                    image_last = image
-
-                if image_last:
-                    sink.write(self._frame_count, image_last)
-
-                self._frame_count += 1
-                self._ready.set()
+            session = await self._frames_captured(browser, sink)
 
             await session.detach()
             await browser.close()
+
+    async def _render_outcome(self) -> BaseException | None:
+        """
+        A method that runs the capture and returns its failure rather than raising it.
+
+        :return: The exception the capture raised, or None if it stopped cleanly.
+        """
+
+        outcomes = await asyncio.gather(self._render(), return_exceptions=True)
+
+        return outcomes[0]
+
+    def _run(self) -> None:
+        """
+        A method that runs the capture loop on its own asyncio loop.
+
+        The ready flag is set on failure as well as on the first frame, because the
+        starting thread waits on it and would otherwise block until its timeout for a
+        capture that has already died.
+        """
+
+        outcome = asyncio.run(self._render_outcome())
+
+        if outcome is not None:
+            self._error = outcome
+            self._ready.set()
 
     def start(self, sink: FrameSink) -> None:
         """
         A method that opens the sink and starts the capture thread.
 
-        The call blocks until the first frame is written, so a demo never records
+        The call blocks until the first frame is captured, so a demo never records
         against a capture that has not attached yet.
 
         :param sink: The destination the frames are written to.
-        :raises RuntimeError: If the renderer is already running, or no frame arrives in time.
+        :raises RuntimeError: If the renderer is already running.
+        :raises RenderError: If no frame arrives in time.
         """
 
         if self._thread is not None:
             message = 'the frame renderer is already running'
             raise RuntimeError(message)
 
+        self._color_scheme = _color_scheme_of(self._page)
         self._target_id = _target_id_of(self._page)
 
         sink.open()
@@ -392,7 +600,7 @@ class FrameRenderer:
             self.stop()
 
             message = f'the frame renderer produced no frame within {READY_TIMEOUT_SECONDS}s'
-            raise RuntimeError(message)
+            raise RenderError(message)
 
         self._error_raised()
 
@@ -405,7 +613,7 @@ class FrameRenderer:
         failure is raised in preference to the sink failure, since a sink that could
         not be closed is usually the consequence of the thread that stopped feeding it.
 
-        :raises RuntimeError: If the thread does not stop in time, the capture failed,
+        :raises RenderError: If the thread does not stop in time, the capture failed,
             or the sink could not be closed.
         """
 
@@ -419,16 +627,16 @@ class FrameRenderer:
 
         self._thread = None
 
-        sink = self._sink
-        self._sink = None
-
         try:
+            sink = self._sink
+            self._sink = None
+
             if sink is not None:
                 sink.close()
         finally:
             if thread.is_alive():
                 message = f'the frame renderer did not stop within {STOP_TIMEOUT_SECONDS}s'
-                raise RuntimeError(message)
+                raise RenderError(message)
 
             self._error_raised()
 
@@ -442,7 +650,7 @@ class FrameRenderer:
         self._page = page
         self._target_id = _target_id_of(page)
 
-    def wait_ms(self, ms: float) -> None:
+    def wait_ms(self, duration_ms: float) -> None:
         """
         A method that holds until the capture has advanced by a duration.
 
@@ -450,33 +658,42 @@ class FrameRenderer:
         the second of footage it asked for however long the machine takes to render it.
         A capture that stops producing frames raises rather than holding forever.
 
-        :param ms: The duration to advance by.
-        :raises RuntimeError: If the capture fails, or renders no frame for the stall timeout.
+        :param duration_ms: The duration to advance by.
+        :raises RenderError: If the capture fails, or renders no frame for the stall timeout.
         """
 
-        if ms <= 0:
+        if duration_ms <= 0:
             return
 
         if self._thread is None:
-            self._page.wait_for_timeout(ms)
+            self._page.wait_for_timeout(duration_ms)
 
             return
 
-        frame_count_target = self._frame_count + max(1, math.ceil(ms / self._interval_ms))
+        frame_count_needed = max(1, math.ceil(duration_ms / self._interval_ms))
+        frame_count_target = self._frame_count + frame_count_needed
         frame_count_seen = self._frame_count
-        stalled_since = time.monotonic()
+        slice_count_max = frame_count_needed * WAIT_SLICE_COUNT_PER_FRAME_MAX
+        stalled_since = self._clock()
 
-        while self._frame_count < frame_count_target:
+        for _ in range(slice_count_max):
+            if self._frame_count >= frame_count_target:
+                return
+
             self._error_raised()
 
             if self._frame_count != frame_count_seen:
                 frame_count_seen = self._frame_count
-                stalled_since = time.monotonic()
-            elif time.monotonic() - stalled_since > STALL_SECONDS_MAX:
+                stalled_since = self._clock()
+
+            if self._clock() - stalled_since > STALL_SECONDS_MAX:
                 message = f'no frame was rendered for {STALL_SECONDS_MAX}s'
-                raise RuntimeError(message)
+                raise RenderError(message)
 
             self._page.wait_for_timeout(WAIT_SLICE_MS)
+
+        message = f'{frame_count_needed} frames took more than {slice_count_max} waits to render'
+        raise RenderError(message)
 
 
 def renderer_for(page: Page) -> FrameRenderer:
@@ -488,7 +705,7 @@ def renderer_for(page: Page) -> FrameRenderer:
     :raises LookupError: If no renderer is registered for the page.
     """
 
-    renderer = _renderers.get(id(page))
+    renderer = FrameRenderer.registry.get(id(page))
 
     if renderer is None:
         message = (
@@ -509,7 +726,7 @@ def renderer_register(page: Page, renderer: FrameRenderer) -> None:
     :param renderer: The renderer to register.
     """
 
-    _renderers[id(page)] = renderer
+    FrameRenderer.registry[id(page)] = renderer
 
 
 def renderer_unregister(page: Page) -> None:
@@ -517,9 +734,27 @@ def renderer_unregister(page: Page) -> None:
     A function that drops the renderer registered for a page.
 
     :param page: The page whose renderer is dropped.
+    :raises LookupError: If no renderer is registered for the page.
     """
 
-    _renderers.pop(id(page), None)
+    renderer = FrameRenderer.registry.pop(id(page), None)
+
+    if renderer is None:
+        message = 'no FrameRenderer is registered for the page, so none can be dropped'
+        raise LookupError(message)
+
+
+def _color_scheme_of(page: Page) -> ColorScheme:
+    """
+    A function that reads the color scheme a page is rendered in.
+
+    :param page: The page to read.
+    :return: Dark if the page prefers a dark color scheme, light otherwise.
+    """
+
+    dark = page.evaluate(COLOR_SCHEME_DARK_SCRIPT)
+
+    return 'dark' if dark else 'light'
 
 
 async def _frame_rendered(
@@ -560,25 +795,10 @@ async def _frame_rendered(
     return base64.b64decode(data)
 
 
-async def _real_time_awaited(ticks: float) -> None:
-    """
-    A function that holds until real time catches up with the timeline.
-
-    A capture that ran ahead of the wall clock would drive the page faster than its
-    own animations and timers, so a timeline ahead of real time waits for it.
-
-    :param ticks: The timestamp the next frame is rendered at.
-    """
-
-    ahead_ms = ticks - _ticks_now()
-
-    if ahead_ms > 0:
-        await asyncio.sleep(ahead_ms / 1000)
-
-
 async def _session_attached(
     browser: Browser,
     *,
+    color_scheme: ColorScheme,
     target_id: str,
     endpoint: str,
     navigation: _NavigationWatch,
@@ -588,14 +808,17 @@ async def _session_attached(
 
     The pages are searched rather than addressed directly, because a target opened
     by the demo appears in the connection a moment after the browser reports it, so
-    the search is retried until it does.
+    the search is retried until it does. The connection applies its own default
+    emulation to each page it attaches to, so the page is given back the color
+    scheme the demo opened it with.
 
     :param browser: The browser the session is opened on.
+    :param color_scheme: The color scheme the page was opened with.
     :param target_id: The target the session must reach.
     :param endpoint: The URL of the debugging endpoint, used in the error message.
     :param navigation: The watch subscribed to the page events of the session.
     :return: The session attached to the page.
-    :raises RuntimeError: If no page carries the target.
+    :raises RenderError: If no page carries the target.
     """
 
     for _ in range(TARGET_ATTACH_ATTEMPT_COUNT_MAX):
@@ -605,6 +828,7 @@ async def _session_attached(
                 target_info = await session.send('Target.getTargetInfo')
 
                 if target_info['targetInfo']['targetId'] == target_id:
+                    await page.emulate_media(color_scheme=color_scheme)
                     await navigation.watch(session)
 
                     return session
@@ -614,7 +838,7 @@ async def _session_attached(
         await asyncio.sleep(TARGET_ATTACH_RETRY_SECONDS)
 
     message = f'no page with target {target_id} is reachable at {endpoint}'
-    raise RuntimeError(message)
+    raise RenderError(message)
 
 
 def _screenshot_parameters(screenshot_format: str, screenshot_quality: int) -> dict[str, object]:
@@ -649,39 +873,3 @@ def _target_id_of(page: Page) -> str:
     session.detach()
 
     return str(target_info['targetInfo']['targetId'])
-
-
-def _ticks_now() -> float:
-    """
-    A function that reads the current timeline position.
-
-    The lead is added because the compositor rejects a frame timestamp that falls
-    behind the timestamps it has already seen, and a browser that started before
-    this process has a clock further along than a fresh monotonic reading.
-
-    :return: The current position on the timeline.
-    """
-
-    return time.monotonic() * 1000 + FRAME_TICKS_LEAD_MS
-
-
-def _ticks_seeded(
-    ticks_by_target: Mapping[str, float],
-    target_id: str,
-    interval_ms: float,
-) -> float:
-    """
-    A function that picks where the timeline resumes for a target.
-
-    :param ticks_by_target: The last timestamp rendered for each target.
-    :param target_id: The target the timeline is resuming for.
-    :param interval_ms: The time one frame covers.
-    :return: The timestamp the next frame is rendered at.
-    """
-
-    ticks_last = ticks_by_target.get(target_id)
-
-    if ticks_last is None:
-        return _ticks_now()
-
-    return max(_ticks_now(), ticks_last + interval_ms)

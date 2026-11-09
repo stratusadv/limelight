@@ -15,6 +15,9 @@ if TYPE_CHECKING:
     from limelight.demo import Demo
 
 
+pytestmark = pytest.mark.usefixtures('_expect_stubbed')
+
+
 class DestructiveConfirm(Confirm):
     button_selector = '.app-btn-destructive'
 
@@ -55,14 +58,18 @@ class FakeDemo:
         self.clicks.append(locator)
 
     def spotlight(self, locator: object, *, label: str = '') -> None:
+        _ = locator
+
         self.spotlights.append(label)
 
 
 def expect_stub(locator: object) -> SimpleNamespace:
-    return SimpleNamespace(to_be_visible=lambda timeout: None)
+    _ = locator
+
+    return SimpleNamespace(to_be_visible=lambda **_: None)
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def _expect_stubbed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr('limelight.components.confirm.expect', expect_stub)
 

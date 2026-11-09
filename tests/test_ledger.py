@@ -4,7 +4,7 @@ import pytest
 
 from typing import cast
 
-from limelight.ledger import Direction, Ledger
+from limelight.ledger import Ledger
 
 
 def test_snapshot_reads_probes() -> None:
@@ -62,7 +62,7 @@ def test_improves_down_flips_sentiment() -> None:
     ledger = Ledger().track(
         'Errors',
         lambda: values['Errors'],
-        improves=Direction.DOWN,
+        improves=Ledger.Direction.DOWN,
         unit='errors',
     )
 
@@ -78,7 +78,26 @@ def test_improves_down_flips_sentiment() -> None:
 
 def test_improves_invalid_rejected() -> None:
     with pytest.raises(ValueError, match='improves'):
-        Ledger().track('Errors', lambda: 0.0, improves=cast('Direction', 'sideways'))
+        Ledger().track('Errors', lambda: 0.0, improves=cast('Ledger.Direction', object()))
+
+
+def test_improves_flat_rejected() -> None:
+    with pytest.raises(ValueError, match='improves must be one of: down, up'):
+        Ledger().track('Errors', lambda: 0.0, improves=Ledger.Direction.FLAT)
+
+
+def test_track_rejects_a_label_already_tracked() -> None:
+    ledger = Ledger().track('Errors', lambda: 0.0)
+
+    with pytest.raises(ValueError, match='metric already tracked: Errors'):
+        ledger.track('Errors', lambda: 1.0)
+
+    assert ledger.snapshot() == {'Errors': 0.0}
+
+
+def test_track_rejects_an_empty_label() -> None:
+    with pytest.raises(ValueError, match='label must not be empty'):
+        Ledger().track(' ', lambda: 0.0)
 
 
 def test_rows_reject_values_missing_a_tracked_metric() -> None:

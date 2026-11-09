@@ -6,6 +6,7 @@ from typing_extensions import override
 
 from playwright.sync_api import Error as PlaywrightError
 
+from limelight import OverlayError
 from limelight.config import DemoConfig
 from limelight.overlay.assets import OVERLAY_JAVASCRIPT
 from limelight.overlay.bridge import EVALUATE_ATTEMPT_COUNT, Bridge
@@ -47,7 +48,7 @@ def test_call_raises_when_the_overlay_will_not_install(monkeypatch: pytest.Monke
 
     monkeypatch.setattr(bridge, 'ensure', lambda: None)
 
-    with pytest.raises(RuntimeError, match='unreachable'):
+    with pytest.raises(OverlayError, match='unreachable'):
         bridge.call('spotClear')
 
 
@@ -80,7 +81,7 @@ def test_call_raises_when_the_page_never_stops_navigating() -> None:
 
     page.navigation_error_count = EVALUATE_ATTEMPT_COUNT
 
-    with pytest.raises(RuntimeError, match='navigated away'):
+    with pytest.raises(OverlayError, match='navigated away'):
         bridge.call('spotClear')
 
     assert len(page.evaluations) == EVALUATE_ATTEMPT_COUNT
@@ -91,6 +92,8 @@ def test_call_reraises_an_unrelated_playwright_error(monkeypatch: pytest.MonkeyP
     bridge = Bridge(page.as_page(), CONFIG)
 
     def explode(expression: str, argument: object = None) -> object:
+        _ = (expression, argument)
+
         message = 'Target page, context or browser has been closed'
         raise PlaywrightError(message)
 
@@ -108,8 +111,11 @@ def test_read_returns_only_a_mapping() -> None:
 
     page.control_states = [{'paused': True}]
 
-    assert bridge.read('controlRead') == {'paused': True}
-    assert bridge.read('spotClear') is None
+    state = bridge.read('controlRead')
+    state_other = bridge.read('spotClear')
+
+    assert state == {'paused': True}
+    assert state_other is None
 
 
 class StringPage(FakePage):
@@ -124,5 +130,8 @@ def test_a_call_that_answers_with_no_mapping_reads_as_none() -> None:
     page = StringPage()
     bridge = Bridge(page.as_page(), CONFIG)
 
-    assert bridge.call('controlPeek') is None
-    assert bridge.read('controlPeek') is None
+    outcome = bridge.call('controlPeek')
+    state = bridge.read('controlPeek')
+
+    assert outcome is None
+    assert state is None

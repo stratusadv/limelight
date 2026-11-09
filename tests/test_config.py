@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import pytest
 
+from typing import TYPE_CHECKING, cast
+
+from limelight import limits
 from limelight.config import (
     DEMO_MODE_NARRATE,
     DEMO_MODE_PRESENT,
@@ -11,6 +14,10 @@ from limelight.config import (
     VIDEO_QUALITIES,
     VIDEO_QUALITY_DEFAULT,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
+    from typing import Any
 
 
 ENVIRONMENT_VARIABLES = (
@@ -31,14 +38,15 @@ def environment(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
     return monkeypatch
 
 
-def test_defaults_are_silent(environment: pytest.MonkeyPatch) -> None:
+@pytest.mark.usefixtures('environment')
+def test_defaults_are_silent() -> None:
     config = DemoConfig.from_env()
 
     assert config.mode == DEMO_MODE_SILENT
     assert config.narrated is False
     assert config.shots is False
     assert config.video is False
-    assert config.speed_factor == 1.0
+    assert config.speed_factor == pytest.approx(1.0)
 
 
 def test_mode_narrate(environment: pytest.MonkeyPatch) -> None:
@@ -65,6 +73,13 @@ def test_present_with_video_rejected(environment: pytest.MonkeyPatch) -> None:
     environment.setenv('DEMO_VIDEO', '1')
 
     with pytest.raises(ValueError, match='present'):
+        DemoConfig.from_env()
+
+
+def test_silent_with_video_rejected(environment: pytest.MonkeyPatch) -> None:
+    environment.setenv('DEMO_VIDEO', '1')
+
+    with pytest.raises(ValueError, match='video needs narrate mode'):
         DemoConfig.from_env()
 
 
@@ -113,6 +128,7 @@ def test_step_ms_zero_rejected(environment: pytest.MonkeyPatch) -> None:
 
 
 def test_shots_and_video_truthy(environment: pytest.MonkeyPatch) -> None:
+    environment.setenv('DEMO_MODE', 'narrate')
     environment.setenv('DEMO_SHOTS', 'yes')
     environment.setenv('DEMO_VIDEO', 'true')
 
@@ -124,7 +140,7 @@ def test_shots_and_video_truthy(environment: pytest.MonkeyPatch) -> None:
 
 def test_constructor_rejects_unknown_mode() -> None:
     with pytest.raises(ValueError, match='mode'):
-        DemoConfig(mode='loud')
+        DemoConfig(mode=cast('Any', 'loud'))
 
 
 def test_constructor_rejects_speed_factor_zero() -> None:
@@ -142,7 +158,8 @@ def test_video_disables_controls() -> None:
     assert DemoConfig(mode='narrate', video=True).controls is False
 
 
-def test_quality_defaults_to_medium(environment: pytest.MonkeyPatch) -> None:
+@pytest.mark.usefixtures('environment')
+def test_quality_defaults_to_medium() -> None:
     config = DemoConfig.from_env()
 
     assert config.quality == VIDEO_QUALITY_DEFAULT
@@ -169,7 +186,7 @@ def test_an_unknown_quality_from_the_environment_is_refused(
 
 def test_constructor_rejects_an_unknown_quality() -> None:
     with pytest.raises(ValueError, match='quality must be one of'):
-        DemoConfig(quality='cinematic')
+        DemoConfig(quality=cast('Any', 'cinematic'))
 
 
 def test_every_quality_falls_within_the_encoder_bounds() -> None:
@@ -199,3 +216,67 @@ def test_the_cursor_is_drawn_unless_the_environment_hides_it(
     environment.setenv('DEMO_CURSOR_HIDDEN', 'true')
 
     assert DemoConfig.from_env().cursor_hidden is True
+
+
+def test_holds_from_environment(environment: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    path = tmp_path / 'holds.json'
+    path.write_text('{"Open the order Navigate to it.": 6200}', encoding='utf-8')
+    environment.setenv('DEMO_HOLDS', str(path))
+
+    config = DemoConfig.from_env()
+
+    assert config.hold_ms_for('Open the order Navigate to it.') == 6200
+    assert config.hold_ms_for('Unknown') is None
+
+
+def test_holds_missing_file_rejected(environment: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    environment.setenv('DEMO_HOLDS', str(tmp_path / 'absent.json'))
+
+    with pytest.raises(ValueError, match='DEMO_HOLDS'):
+        DemoConfig.from_env()
+
+
+def test_holds_non_positive_rejected() -> None:
+    with pytest.raises(ValueError, match='positive whole number'):
+        DemoConfig(holds={'Open the order': 0})
+
+
+def test_constructor_rejects_speed_factor_outside_the_playable_range() -> None:
+    with pytest.raises(ValueError, match=r'speed_factor must be from 0\.1 to 1000\.0: 0\.05'):
+        DemoConfig(speed_factor=0.05)
+
+    with pytest.raises(ValueError, match=r'speed_factor must be from 0\.1 to 1000\.0: 1000\.5'):
+        DemoConfig(speed_factor=1000.5)
+
+
+def test_constructor_accepts_the_speed_factor_limits() -> None:
+    assert DemoConfig(speed_factor=limits.SPEED_FACTOR_MIN).speed_factor == limits.SPEED_FACTOR_MIN
+    assert DemoConfig(speed_factor=limits.SPEED_FACTOR_MAX).speed_factor == limits.SPEED_FACTOR_MAX
+
+
+def test_constructor_rejects_step_ms_past_the_hold_limit() -> None:
+    with pytest.raises(ValueError, match=f'step_ms must be from 1 to {limits.HOLD_MS_MAX}'):
+        DemoConfig(step_ms=limits.HOLD_MS_MAX + 1)
+
+    assert DemoConfig(step_ms=limits.HOLD_MS_MAX).step_ms == limits.HOLD_MS_MAX
+
+
+def test_holds_past_the_hold_limit_rejected() -> None:
+    with pytest.raises(ValueError, match=f'up to {limits.HOLD_MS_MAX}'):
+        DemoConfig(holds={'Open the order': limits.HOLD_MS_MAX + 1})
+
+    config = DemoConfig(holds={'Open the order': limits.HOLD_MS_MAX})
+
+    assert config.hold_ms_for('Open the order') == limits.HOLD_MS_MAX
+
+
+def test_holds_are_a_read_only_copy_of_the_mapping_given() -> None:
+    holds = {'Open the order': 900}
+    config = DemoConfig(holds=holds)
+
+    holds['Open the order'] = 1
+
+    assert config.hold_ms_for('Open the order') == 900
+
+    with pytest.raises(TypeError):
+        cast('dict[str, int]', config.holds)['Open the order'] = 1

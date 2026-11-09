@@ -5,6 +5,7 @@ import subprocess
 from typing import TYPE_CHECKING, Protocol
 
 from limelight import ffmpeg
+from limelight.errors import RenderError
 from limelight.ffmpeg import FRAMES_CRF_DEFAULT, FRAMES_PRESET_DEFAULT
 
 if TYPE_CHECKING:
@@ -37,12 +38,13 @@ class FrameSink(Protocol):
 
         ...
 
-    def write(self, index: int, image: bytes) -> None:
+    def write(self, index: int, image: bytes) -> int:
         """
         A method that writes one frame.
 
         :param index: The position of the frame in the timeline, counted from zero.
         :param image: The encoded image for the frame.
+        :return: The number of bytes written.
         """
 
         ...
@@ -85,15 +87,18 @@ class DirectorySink:
 
         self._directory.mkdir(parents=True, exist_ok=True)
 
-    def write(self, index: int, image: bytes) -> None:
+    def write(self, index: int, image: bytes) -> int:
         """
         A method that writes one frame as an image file.
 
         :param index: The position of the frame in the timeline, counted from zero.
         :param image: The encoded image for the frame.
+        :return: The number of bytes written.
         """
 
-        (self._directory / f'frame-{index:06d}{self._suffix}').write_bytes(image)
+        path = self._directory / f'frame-{index:06d}{self._suffix}'
+
+        return path.write_bytes(image)
 
 
 class VideoSink:
@@ -139,7 +144,7 @@ class VideoSink:
         finishes is killed rather than left behind, because the pipe is already closed
         and a process still holding the output file would outlive the run.
 
-        :raises RuntimeError: If the encoder exits with a non-zero status, or has to be killed.
+        :raises RenderError: If the encoder exits with a non-zero status, or has to be killed.
         """
 
         process = self._process
@@ -156,18 +161,20 @@ class VideoSink:
             return_code = process.wait(timeout=STOP_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
             process.kill()
-            process.wait()
+
+            return_code_killed = process.wait()
 
             message = (
                 f'ffmpeg did not finish within {STOP_TIMEOUT_SECONDS}s'
                 f' while writing {self._destination}; it was killed'
+                f' and exited with status {return_code_killed}'
             )
 
-            raise RuntimeError(message) from None
+            raise RenderError(message) from None
 
         if return_code != 0:
             message = f'ffmpeg exited with status {return_code} while writing {self._destination}'
-            raise RuntimeError(message)
+            raise RenderError(message)
 
     def open(self) -> None:
         """A method that starts the encoder reading from the pipe."""
@@ -183,14 +190,17 @@ class VideoSink:
 
         self._process = self._encoder.pipe(arguments)
 
-    def write(self, index: int, image: bytes) -> None:
+    def write(self, index: int, image: bytes) -> int:
         """
         A method that writes one frame into the encoder.
 
         :param index: The position of the frame in the timeline, counted from zero.
         :param image: The encoded image for the frame.
+        :return: The number of bytes written.
         :raises RuntimeError: If the sink is not open, or the encoder has no pipe.
         """
+
+        _ = index
 
         process = self._process
 
@@ -202,4 +212,4 @@ class VideoSink:
             message = f'the video sink for {self._destination} has no pipe into the encoder'
             raise RuntimeError(message)
 
-        process.stdin.write(image)
+        return process.stdin.write(image)

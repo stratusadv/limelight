@@ -1,14 +1,33 @@
 from __future__ import annotations
 
+from typing_extensions import override
+
+from playwright.sync_api import Error as PlaywrightError
+
 from limelight.config import DemoConfig
 from limelight.overlay.bridge import Bridge
-from limelight.overlay.keyboard import Keyboard
+from limelight.overlay.keyboard import VALUE_MASK, Keyboard, value_masked
 from limelight.overlay.playback import Playback
 
 from fakes import FakeClock, FakeLocator, FakePage
 
 
 CONFIG = DemoConfig(mode='narrate', video=True)
+
+
+class UnreadableLocator(FakeLocator):
+    @override
+    def evaluate(
+        self,
+        expression: str,
+        argument: object = None,
+        *,
+        timeout: float | None = None,
+    ) -> object:
+        _ = (expression, argument, timeout)
+
+        message = 'the element is not attached yet'
+        raise PlaywrightError(message)
 
 
 def keyboard_build(page: FakePage, *, clock: FakeClock | None = None) -> Keyboard:
@@ -67,3 +86,17 @@ def test_press_flashes_the_key_inside_the_drive_guard() -> None:
 
     assert locator.pressed_keys == ['Enter']
     assert calls == ['keyFlash', 'inputDriveBegin', 'inputDriveEnd']
+
+
+def test_a_field_that_cannot_be_read_stays_masked() -> None:
+    page = FakePage()
+    keyboard = keyboard_build(page)
+    locator = UnreadableLocator()
+
+    keyboard.type(locator.as_locator(), 'hello')
+
+    expressions = [expression for expression, _ in page.evaluations]
+
+    assert locator.typed_sequences == [('hello', 55.0)]
+    assert value_masked(locator.as_locator(), 'hello') == VALUE_MASK
+    assert not any('keyHudEnable(' in expression for expression in expressions)

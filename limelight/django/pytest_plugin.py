@@ -4,7 +4,12 @@ import os
 
 import pytest
 
-from typing import TYPE_CHECKING, Any
+import django.test.testcases as django_testcases
+
+from importlib import import_module
+from typing import TYPE_CHECKING
+
+from django import db as django_db
 
 from limelight.django.server import SequentialLiveServerThread
 
@@ -29,11 +34,9 @@ def _database_needs_serial_server() -> bool:
     :return: True if any connection is an in-memory SQLite database, False otherwise.
     """
 
-    from django.db import connections
-
     return any(
         connection.vendor == 'sqlite' and connection.is_in_memory_db()
-        for connection in connections.all()
+        for connection in django_db.connections.all()
     )
 
 
@@ -42,26 +45,18 @@ def _live_server_open() -> Generator[LiveServer]:
     A function that opens the live server and stops it when the session ends.
 
     The thread class is swapped on the Django module for the duration of the
-    construction alone, because the live server reads it at that moment and leaving
-    the swap in place would change every other server in the session.
+    construction alone, because the live server reads it at that moment, and a swap
+    left in place would change any other server in the session.
 
     :return: The generator that yields the running server.
     """
 
-    import django.test.testcases as django_testcases
+    with pytest.MonkeyPatch.context() as patch:
+        if _database_needs_serial_server():
+            patch.setattr(django_testcases, 'LiveServerThread', SequentialLiveServerThread)
 
-    from pytest_django.live_server_helper import LiveServer
-
-    testcases: Any = django_testcases
-    thread_class_original = testcases.LiveServerThread
-
-    if _database_needs_serial_server():
-        testcases.LiveServerThread = SequentialLiveServerThread
-
-    try:
-        server = LiveServer('localhost')
-    finally:
-        testcases.LiveServerThread = thread_class_original
+        helper = import_module('pytest_django.live_server_helper')
+        server = helper.LiveServer('localhost')
 
     yield server
 
@@ -128,4 +123,7 @@ def pytest_configure(config: pytest.Config) -> None:
     :param config: The pytest configuration.
     """
 
-    os.environ.setdefault('DJANGO_ALLOW_ASYNC_UNSAFE', 'true')
+    _ = config
+
+    if 'DJANGO_ALLOW_ASYNC_UNSAFE' not in os.environ:
+        os.environ['DJANGO_ALLOW_ASYNC_UNSAFE'] = 'true'

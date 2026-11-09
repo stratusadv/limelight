@@ -1,0 +1,40 @@
+{
+    "compilerOptions": {
+        "allowImportingTsExtensions": true,
+        "allowUnreachableCode": false,
+        "allowUnusedLabels": false,
+        "erasableSyntaxOnly": true,
+        "exactOptionalPropertyTypes": true,
+        "forceConsistentCasingInFileNames": true,
+        "isolatedModules": true,
+        "lib": [
+            "ES2024",
+            "DOM",
+            "DOM.Iterable"
+        ],
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
+        "noEmit": true,
+        "noFallthroughCasesInSwitch": true,
+        "noImplicitOverride": true,
+        "noImplicitReturns": true,
+        "noPropertyAccessFromIndexSignature": true,
+        "noUncheckedIndexedAccess": true,
+        "noUncheckedSideEffectImports": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "skipLibCheck": false,
+        "strict": true,
+        "target": "ES2024",
+        "types": [
+            "node"
+        ],
+        "verbatimModuleSyntax": true
+    },
+    "include": [
+        "build.ts",
+        "eslint.config.ts",
+        "examples",
+        "src"
+    ]
+}

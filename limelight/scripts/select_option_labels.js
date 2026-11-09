@@ -1,1 +1,4 @@
-element => element.tagName === 'SELECT' ? Array.from(element.options).map(option => option.label) : []
+element => {
+"use strict";var limelight=(()=>{var s=Object.defineProperty;var l=Object.getOwnPropertyDescriptor;var p=Object.getOwnPropertyNames;var u=Object.prototype.hasOwnProperty;var c=(e,t)=>{for(var n in t)s(e,n,{get:t[n],enumerable:!0})},f=(e,t,n,i)=>{if(t&&typeof t=="object"||typeof t=="function")for(let r of p(t))!u.call(e,r)&&r!==n&&s(e,r,{get:()=>t[r],enumerable:!(i=l(t,r))||i.enumerable});return e};var m=e=>f(s({},"__esModule",{value:!0}),e);var d={};c(d,{selectOptionLabels:()=>g});var a=class extends Error{constructor(t,n){super(t,n),this.name="AssertionError"}};function o(e,t){if(!e)throw new a(t)}function g(e){return o(e.tagName.length>0,"an element has a tag name"),o(e.ownerDocument.defaultView!==null,"an element sits on a live page"),e instanceof HTMLSelectElement?[...e.options].map(t=>t.label):[]}return m(d);})();
+return limelight.selectOptionLabels(element);
+}

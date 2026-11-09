@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-    Event = dict[str, object]
+Event = dict[str, object]
 
 
 class EventName(StrEnum):
@@ -42,7 +42,7 @@ class Transcript:
     A recorder for the events of a demo run and their timing.
 
     This class stamps each event with the milliseconds elapsed since the run
-    started and rewrites the JSON file after every append, so a crashed run still
+    started and rewrites the JSON file after each append, so a crashed run still
     leaves the events it got through on disk.
     """
 
@@ -119,7 +119,24 @@ def event_offset_ms(event: Event) -> int:
     return 0
 
 
-def event_text(event: Event, key: str) -> str:
+def cue_text(event: Mapping[str, object]) -> str:
+    """
+    A function that renders the spoken text of one cue.
+
+    :param event: The event or detail the cue is built from.
+    :return: The title, subtitle, and body joined into one line, with the empty pieces dropped.
+    """
+
+    pieces = [
+        event_text(event, 'title'),
+        event_text(event, 'subtitle'),
+        event_text(event, 'body'),
+    ]
+
+    return ' '.join(piece for piece in pieces if piece)
+
+
+def event_text(event: Mapping[str, object], key: str) -> str:
     """
     A function that reads a string field out of a recorded event.
 
@@ -140,21 +157,22 @@ def transcript_load(path: Path) -> list[Event]:
     """
     A function that loads the events from a transcript file.
 
-    :param path: The path to the transcript file.
+    :param path: The path to the transcript file, or to the directory holding one.
     :return: The recorded events, with any non-object entry dropped.
     :raises TypeError: If the file holds no JSON object, or carries no event list.
     """
 
-    payload = json.loads(path.read_text(encoding='utf-8'))
+    transcript_path = transcript_path_resolve(path)
+    payload = json.loads(transcript_path.read_text(encoding='utf-8'))
 
     if not isinstance(payload, dict):
-        message = f'transcript is not a JSON object: {path}'
+        message = f'transcript is not a JSON object: {transcript_path}'
         raise TypeError(message)
 
     events = payload.get('events')
 
     if not isinstance(events, list):
-        message = f'no events found in {path}'
+        message = f'no events found in {transcript_path}'
         raise TypeError(message)
 
     return [event for event in events if isinstance(event, dict)]

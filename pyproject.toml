@@ -20,6 +20,7 @@ requires-python = ">=3.11"
 
 dependencies = [
     "playwright>=1.49",
+    "typing-extensions>=4.12",
 ]
 
 [project.scripts]
@@ -41,9 +42,15 @@ development = [
     "pytest>=8.0",
     "pytest-django>=4.9",
     "pytest-playwright>=0.7",
-    "ruff>=0.16",
-    "ty>=0.0.75",
+    "ruff==0.17.3",
+    "ty==0.0.96",
+]
+
+[dependency-groups]
+docs = [
+    "mkdocstrings-python==2.0.10",
     "typing-extensions>=4.12",
+    "zensical==0.1.0",
 ]
 
 [tool.uv.build-backend]

@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from playwright.sync_api import expect
 
-from limelight.components.modal import ELEMENT_WAIT_TIMEOUT_MS
+from limelight.limits import ELEMENT_WAIT_TIMEOUT_MS
 
 if TYPE_CHECKING:
     from playwright.sync_api import Locator
@@ -16,10 +16,10 @@ class Confirm:
     """
     A driver for the inline prompt that stands between an action and its effect.
 
-    This class finds the button that carries the action through and clicks it,
-    waiting for it before saying anything about it. Only visible buttons are
-    considered, because a page that renders one prompt per row keeps every
-    unopened prompt in the markup.
+    This class clicks the button that carries the action through, and waits for
+    the button to appear before drawing anything over it. The search considers
+    only visible buttons, because a page that renders one prompt per row keeps
+    each unopened prompt in the markup.
 
     The click is left unbarriered on purpose. A prompt sits in front of anything
     from a form post to a background write, so the caller wraps the accept in the

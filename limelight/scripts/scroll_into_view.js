@@ -1,0 +1,4 @@
+element => {
+"use strict";var limelight=(()=>{var t=Object.defineProperty;var a=Object.getOwnPropertyDescriptor;var c=Object.getOwnPropertyNames;var p=Object.prototype.hasOwnProperty;var u=(e,o)=>{for(var r in o)t(e,r,{get:o[r],enumerable:!0})},d=(e,o,r,l)=>{if(o&&typeof o=="object"||typeof o=="function")for(let n of c(o))!p.call(e,n)&&n!==r&&t(e,n,{get:()=>o[n],enumerable:!(l=a(o,n))||l.enumerable});return e};var w=e=>d(t({},"__esModule",{value:!0}),e);var f={};u(f,{scrollIntoView:()=>E});var s=class extends Error{constructor(o,r){super(o,r),this.name="AssertionError"}};function i(e,o){if(!e)throw new s(o)}function E(e){i(e.nodeType===Node.ELEMENT_NODE,"only an element scrolls into view"),i(e.ownerDocument.defaultView!==null,"an element scrolls on a live page"),e.scrollIntoView({block:"center"})}return w(f);})();
+return limelight.scrollIntoView(element);
+}

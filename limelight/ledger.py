@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
+from types import MappingProxyType
 from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
@@ -10,32 +11,18 @@ if TYPE_CHECKING:
     from typing import Self
 
 
-class Direction(StrEnum):
-    """An enumeration of the ways a metric can move between two readings."""
+DELTA_SIGNS = MappingProxyType(
+    {
+        'down': '-',
+        'flat': '',
+        'up': '+',
+    },
+)
 
-    DOWN = 'down'
-    FLAT = 'flat'
-    UP = 'up'
-
-
-class Sentiment(StrEnum):
-    """An enumeration of how a movement reads to a viewer."""
-
-    BAD = 'bad'
-    FLAT = 'flat'
-    GOOD = 'good'
+IMPROVES_DIRECTIONS = ('down', 'up')
 
 
-DELTA_SIGNS = {
-    Direction.DOWN: '-',
-    Direction.FLAT: '',
-    Direction.UP: '+',
-}
-
-IMPROVES_DIRECTIONS = (Direction.DOWN, Direction.UP)
-
-
-def _direction(delta: float) -> Direction:
+def _direction(delta: float) -> Ledger.Direction:
     """
     A function that classifies the sign of a change.
 
@@ -44,12 +31,12 @@ def _direction(delta: float) -> Direction:
     """
 
     if delta > 0:
-        return Direction.UP
+        return Ledger.Direction.UP
 
     if delta < 0:
-        return Direction.DOWN
+        return Ledger.Direction.DOWN
 
-    return Direction.FLAT
+    return Ledger.Direction.FLAT
 
 
 def _format_number(value: float) -> str:
@@ -72,7 +59,7 @@ def _format_number(value: float) -> str:
     return f'{number:,.2f}'
 
 
-def _sentiment(delta: float, improves: Direction) -> Sentiment:
+def _sentiment(delta: float, improves: Ledger.Direction) -> Ledger.Sentiment:
     """
     A function that decides whether a change is good, bad, or neither.
 
@@ -83,13 +70,13 @@ def _sentiment(delta: float, improves: Direction) -> Sentiment:
 
     direction = _direction(delta)
 
-    if direction is Direction.FLAT:
-        return Sentiment.FLAT
+    if direction is Ledger.Direction.FLAT:
+        return Ledger.Sentiment.FLAT
 
     if direction is improves:
-        return Sentiment.GOOD
+        return Ledger.Sentiment.GOOD
 
-    return Sentiment.BAD
+    return Ledger.Sentiment.BAD
 
 
 class Ledger:
@@ -101,6 +88,30 @@ class Ledger:
     overlay can draw.
     """
 
+    class Direction(StrEnum):
+        """An enumeration of the ways a metric can move between two readings."""
+
+        DOWN = 'down'
+        FLAT = 'flat'
+        UP = 'up'
+
+    class Row(TypedDict):
+        """A rendered comparison of one metric before and after a workflow."""
+
+        after: str
+        before: str
+        delta: str
+        direction: Ledger.Direction
+        label: str
+        sentiment: Ledger.Sentiment
+
+    class Sentiment(StrEnum):
+        """An enumeration of how a movement reads to a viewer."""
+
+        BAD = 'bad'
+        FLAT = 'flat'
+        GOOD = 'good'
+
     def __init__(self) -> None:
         """The constructor for the Ledger class."""
 
@@ -109,7 +120,7 @@ class Ledger:
     @staticmethod
     def _delta_label(delta: float, unit: str) -> str:
         """
-        A method that formats a change as a signed, united string.
+        A method that formats a change with its sign and unit.
 
         :param delta: The change between the before and after readings.
         :param unit: The unit the metric is measured in.
@@ -155,7 +166,7 @@ class Ledger:
         before: Mapping[str, float],
         *,
         after: Mapping[str, float] | None = None,
-    ) -> list[LedgerRow]:
+    ) -> list[Ledger.Row]:
         """
         A method that renders the tracked metrics as before and after rows.
 
@@ -170,14 +181,14 @@ class Ledger:
         self._values_validate(before, 'before')
         self._values_validate(after_values, 'after')
 
-        rows: list[LedgerRow] = []
+        rows: list[Ledger.Row] = []
 
         for label, metric in self._metrics.items():
             before_value = before[label]
             after_value = after_values[label]
             delta = after_value - before_value
 
-            row: LedgerRow = {
+            row: Ledger.Row = {
                 'label': label,
                 'before': self._value_label(before_value, metric.unit),
                 'after': self._value_label(after_value, metric.unit),
@@ -192,7 +203,7 @@ class Ledger:
 
     def snapshot(self) -> dict[str, float]:
         """
-        A method that reads every tracked metric through its probe.
+        A method that reads each tracked metric through its probe.
 
         :return: The current reading of each metric, keyed by label.
         """
@@ -204,7 +215,7 @@ class Ledger:
         label: str,
         probe: Callable[[], float],
         *,
-        improves: Direction = Direction.UP,
+        improves: Ledger.Direction = Direction.UP,
         unit: str = '',
     ) -> Self:
         """
@@ -215,8 +226,17 @@ class Ledger:
         :param improves: The direction that counts as an improvement.
         :param unit: The unit the metric is measured in.
         :return: The ledger itself, so calls can be chained.
-        :raises ValueError: If the improving direction is flat.
+        :raises ValueError: If the label is empty or already tracked, or if the
+            improving direction is flat.
         """
+
+        if not label.strip():
+            message = f'label must not be empty (got "{label}")'
+            raise ValueError(message)
+
+        if label in self._metrics:
+            message = f'metric already tracked: {label}'
+            raise ValueError(message)
 
         if improves not in IMPROVES_DIRECTIONS:
             options = ', '.join(IMPROVES_DIRECTIONS)
@@ -224,7 +244,11 @@ class Ledger:
             message = f'improves must be one of: {options} (got "{improves}")'
             raise ValueError(message)
 
-        self._metrics[label] = LedgerMetric(improves=Direction(improves), probe=probe, unit=unit)
+        self._metrics[label] = LedgerMetric(
+            improves=Ledger.Direction(improves),
+            probe=probe,
+            unit=unit,
+        )
 
         return self
 
@@ -233,17 +257,6 @@ class Ledger:
 class LedgerMetric:
     """A tracked metric, its probe, and the direction that improves it."""
 
-    improves: Direction
+    improves: Ledger.Direction
     probe: Callable[[], float]
     unit: str
-
-
-class LedgerRow(TypedDict):
-    """A rendered comparison of one metric before and after a workflow."""
-
-    after: str
-    before: str
-    delta: str
-    direction: Direction
-    label: str
-    sentiment: Sentiment

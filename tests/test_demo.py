@@ -9,16 +9,16 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 from limelight.capture.renderer import renderer_register, renderer_unregister
-from limelight.config import VIDEO_QUALITIES, DemoConfig
+from limelight.config import SPEED_FACTORS, VIDEO_QUALITIES, DemoConfig
 from limelight.demo import Demo
 from limelight.narrator import Silent
-from limelight.overlay import Overlay
+from limelight.overlay.overlay import Overlay
 
 from fakes import FakeApplication, FakeFrameRenderer, FakeLocator, FakeNarrator, FakePage
 
 if TYPE_CHECKING:
     from limelight.capture.renderer import FrameRenderer
-    from limelight.ledger import LedgerRow
+    from limelight.ledger import Ledger
 
 
 NARRATED = DemoConfig(mode='narrate')
@@ -125,44 +125,11 @@ def test_goto_without_a_query_leaves_the_url_alone() -> None:
     assert page.goto_urls == ['http://stage.test/order:list']
 
 
-def test_init_scripts_are_installed_beside_the_print_stub() -> None:
-    page = FakePage()
-    scripts = ('window.hideChrome = true;',)
-
-    Demo(
-        page.as_page(),
-        FakeApplication(),
-        name='demo',
-        config=DemoConfig(),
-        init_scripts=scripts,
-    )
-
-    assert page.init_scripts == ['window.print = () => {};', 'window.hideChrome = true;']
-
-
-def test_init_scripts_are_reinstalled_on_a_page_the_demo_switches_to() -> None:
-    page = FakePage()
-    scripts = ('window.hideChrome = true;',)
-
-    demo = Demo(
-        page.as_page(),
-        FakeApplication(),
-        name='demo',
-        config=DemoConfig(),
-        init_scripts=scripts,
-    )
-
-    opened = FakePage()
-
-    demo.switch_page(opened.as_page())
-
-    assert opened.init_scripts == ['window.print = () => {};', 'window.hideChrome = true;']
-
-
-def test_cards_delegate_to_the_narrator(demos_root: Path) -> None:
+@pytest.mark.usefixtures('demos_root')
+def test_cards_delegate_to_the_narrator() -> None:
     demo, _, _, narrator = demo_build()
 
-    rows: list[LedgerRow] = []
+    rows: list[Ledger.Row] = []
 
     demo.title('Chapter')
     demo.narrate('Welcome', body='Hello.')
@@ -183,7 +150,8 @@ def test_pause_forwards_its_length() -> None:
     assert narrator.calls == [('pause', 300)]
 
 
-def test_actions_delegate_to_the_narrator(demos_root: Path) -> None:
+@pytest.mark.usefixtures('demos_root')
+def test_actions_delegate_to_the_narrator() -> None:
     demo, _, _, narrator = demo_build()
     locator = FakeLocator()
     thumb = FakeLocator()
@@ -214,11 +182,13 @@ def test_actions_delegate_to_the_narrator(demos_root: Path) -> None:
 
 
 def expect_stub(locator: object) -> SimpleNamespace:
-    return SimpleNamespace(to_be_visible=lambda timeout: None)
+    _ = locator
+
+    return SimpleNamespace(to_be_visible=lambda **_: None)
 
 
+@pytest.mark.usefixtures('demos_root')
 def test_reveal_narrates_and_spotlights_the_element(
-    demos_root: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr('limelight.demo.expect', expect_stub)
@@ -244,8 +214,8 @@ def test_reveal_narrates_and_spotlights_the_element(
     assert not any(call[0] == 'screenshot' for call in narrator.calls)
 
 
+@pytest.mark.usefixtures('demos_root')
 def test_reveal_shoots_only_when_a_name_is_given(
-    demos_root: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr('limelight.demo.expect', expect_stub)
@@ -258,7 +228,8 @@ def test_reveal_shoots_only_when_a_name_is_given(
     assert ('screenshot', 'field-detail') in narrator.calls
 
 
-def test_follow_spotlights_the_link_then_waits_out_the_navigation(demos_root: Path) -> None:
+@pytest.mark.usefixtures('demos_root')
+def test_follow_spotlights_the_link_then_waits_out_the_navigation() -> None:
     demo, page, _, narrator = demo_build()
     locator = FakeLocator()
 
@@ -271,7 +242,8 @@ def test_follow_spotlights_the_link_then_waits_out_the_navigation(demos_root: Pa
     assert page.navigation_outcomes == []
 
 
-def test_follow_retries_a_click_that_never_navigates(demos_root: Path) -> None:
+@pytest.mark.usefixtures('demos_root')
+def test_follow_retries_a_click_that_never_navigates() -> None:
     demo, page, _, narrator = demo_build()
     page.navigation_outcomes = [False, True]
 
@@ -282,7 +254,8 @@ def test_follow_retries_a_click_that_never_navigates(demos_root: Path) -> None:
     assert len(clicks) == 2
 
 
-def test_follow_without_a_label_highlights_nothing(demos_root: Path) -> None:
+@pytest.mark.usefixtures('demos_root')
+def test_follow_without_a_label_highlights_nothing() -> None:
     demo, _, _, narrator = demo_build()
 
     demo.follow(FakeLocator().as_locator())
@@ -357,7 +330,7 @@ def test_silent_demo_never_touches_the_page() -> None:
     page = FakePage()
     demo = demo_build_silent(page)
 
-    rows: list[LedgerRow] = []
+    rows: list[Ledger.Row] = []
 
     demo.metrics('Totals', rows)
     demo.narrate('Welcome')
@@ -559,9 +532,9 @@ def test_silent_narrator_switches_pages_and_waits() -> None:
     assert page_second.waits_ms == [100]
 
 
+@pytest.mark.usefixtures('demos_root')
 def test_config_comes_from_the_environment_when_none_is_given(
     monkeypatch: pytest.MonkeyPatch,
-    demos_root: Path,
 ) -> None:
     monkeypatch.setenv('DEMO_MODE', 'silent')
     monkeypatch.setenv('DEMO_STEP_MS', '1234')
@@ -583,16 +556,16 @@ def test_a_hold_of_no_length_is_refused() -> None:
         demo.pause(-1)
 
     with pytest.raises(ValueError, match='ms must be positive: 0'):
-        demo.title('Chapter', ms=0)
+        demo.title('Chapter', hold_ms=0)
 
     with pytest.raises(ValueError, match='ms must be positive: 0'):
-        demo.narrate('Step', ms=0)
+        demo.narrate('Step', hold_ms=0)
 
     with pytest.raises(ValueError, match='ms must be positive: 0'):
-        demo.metrics('Totals', [], ms=0)
+        demo.metrics('Totals', [], hold_ms=0)
 
     with pytest.raises(ValueError, match='ms must be positive: 0'):
-        demo.spotlight(locator.as_locator(), ms=0)
+        demo.spotlight(locator.as_locator(), hold_ms=0)
 
 
 def test_a_goto_without_a_route_is_refused() -> None:
@@ -604,7 +577,8 @@ def test_a_goto_without_a_route_is_refused() -> None:
     assert application.logins == []
 
 
-def test_the_video_sink_takes_the_quality_settings(demos_root: Path) -> None:
+@pytest.mark.usefixtures('demos_root')
+def test_the_video_sink_takes_the_quality_settings() -> None:
     page = FakePage()
     renderer = FakeFrameRenderer(fps=30)
     config = DemoConfig(mode='narrate', quality='low', video=True)
@@ -621,3 +595,54 @@ def test_the_video_sink_takes_the_quality_settings(demos_root: Path) -> None:
     assert sink._crf == VIDEO_QUALITIES['low'].crf
     assert sink._fps == 30
     assert sink._preset == VIDEO_QUALITIES['low'].preset
+
+
+@pytest.mark.usefixtures('demos_root')
+def test_configured_hold_reaches_the_narrator() -> None:
+    holds = {'Order Approval Draft to approved.': 7000, 'Open the order Navigate to it.': 5200}
+    config = DemoConfig(mode='narrate', holds=holds)
+    demo, _, _, narrator = demo_build(config=config)
+
+    demo.title('Order Approval', subtitle='Draft to approved.')
+    demo.narrate('Open the order', body='Navigate to it.')
+    demo.narrate('Open the order', body='Navigate to it.', hold_ms=900)
+    demo.narrate('Unspoken')
+
+    assert [call[-1] for call in narrator.calls] == [7000, 5200, 900, None]
+
+
+@pytest.mark.parametrize('speed', ['fast', 'faster'])
+@pytest.mark.usefixtures('demos_root')
+def test_configured_hold_survives_the_speed_factor(speed: str) -> None:
+    holds = {'Order Approval Draft to approved.': 7000, 'Open the order Navigate to it.': 5200}
+    config = DemoConfig(mode='narrate', holds=holds, speed_factor=SPEED_FACTORS[speed])
+    demo, _, _, narrator = demo_build(config=config)
+
+    demo.title('Order Approval', subtitle='Draft to approved.')
+    demo.narrate('Open the order', body='Navigate to it.')
+    demo.narrate('Open the order', body='Navigate to it.', hold_ms=900)
+
+    played_ms = [cast('float', call[-1]) / config.speed_factor for call in narrator.calls]
+
+    assert played_ms == [7000, 5200, 900 / config.speed_factor]
+
+
+def test_video_transcript_offsets_follow_the_frame_clock(demos_root: Path) -> None:
+    page = FakePage()
+    renderer = FakeFrameRenderer(fps=30)
+    config = DemoConfig(mode='narrate', video=True)
+
+    renderer_register(page.as_page(), cast('FrameRenderer', renderer))
+
+    try:
+        demo = Demo(page.as_page(), FakeApplication(), name='demo', config=config)
+    finally:
+        renderer_unregister(page.as_page())
+
+    demo.title('Start')
+    renderer.frame_count = 45
+    demo.narrate('Later')
+
+    payload = json.loads((demos_root / 'demo' / 'transcript.json').read_text(encoding='utf-8'))
+
+    assert [event['offset_ms'] for event in payload['events']] == [0, 1500]

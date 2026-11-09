@@ -1,0 +1,4 @@
+() => {
+"use strict";var limelight=(()=>{var s=Object.defineProperty;var c=Object.getOwnPropertyDescriptor;var l=Object.getOwnPropertyNames;var u=Object.prototype.hasOwnProperty;var d=(e,r)=>{for(var t in r)s(e,t,{get:r[t],enumerable:!0})},h=(e,r,t,i)=>{if(r&&typeof r=="object"||typeof r=="function")for(let o of l(r))!u.call(e,o)&&o!==t&&s(e,o,{get:()=>r[o],enumerable:!(i=c(r,o))||i.enumerable});return e};var m=e=>h(s({},"__esModule",{value:!0}),e);var b={};d(b,{isColorSchemeDark:()=>f});var n=class extends Error{constructor(r,t){super(r,t),this.name="AssertionError"}};function a(e,r){if(!e)throw new n(r)}var p="(prefers-color-scheme: dark)";function f(){a(document.defaultView!==null,"a color scheme belongs to a live page");let e=matchMedia(p);return a(e.media.length>0,"the browser understands the query"),e.matches}return m(b);})();
+return limelight.isColorSchemeDark();
+}

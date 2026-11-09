@@ -18,6 +18,8 @@ if TYPE_CHECKING:
 NAVIGATION_TIMEOUT_MESSAGE = 'no navigation'
 SCROLL_TIMEOUT_MESSAGE = 'offscreen'
 
+pytestmark = pytest.mark.usefixtures('_expect_stubbed')
+
 
 class SideNavigator(Navigator):
     body = 'The side menu opens every part of the portal.'
@@ -41,6 +43,8 @@ class FakeNode:
         return self
 
     def evaluate(self, expression: str, *, timeout: int = 0) -> None:
+        _ = timeout
+
         if self.scroll_times_out:
             raise PlaywrightTimeoutError(SCROLL_TIMEOUT_MESSAGE)
 
@@ -76,6 +80,8 @@ class FakeDemo:
         )
 
     def _wait_for_url(self, predicate: object, *, timeout: int = 0) -> None:
+        _ = (predicate, timeout)
+
         self.url_waits += 1
 
         if self.url_holds:
@@ -95,15 +101,19 @@ class FakeDemo:
         self.shots.append(name)
 
     def spotlight(self, locator: object, *, label: str = '', scroll: bool = True) -> None:
+        _ = locator
+
         spotlight = (label, scroll)
         self.spotlights.append(spotlight)
 
 
 def expect_stub(locator: object) -> SimpleNamespace:
-    return SimpleNamespace(to_be_visible=lambda timeout: None)
+    _ = locator
+
+    return SimpleNamespace(to_be_visible=lambda **_: None)
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def _expect_stubbed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr('limelight.components.navigator.expect', expect_stub)
 

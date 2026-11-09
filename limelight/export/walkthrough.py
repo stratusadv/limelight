@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from limelight.artifacts import WALKTHROUGH_FILE_NAME
-from limelight.export import TextExport
 from limelight.transcript import EventName, event_text
+from limelight.export.export import TextExport
 
 if TYPE_CHECKING:
     from limelight.transcript import Event
@@ -21,12 +22,14 @@ ACTION_EVENTS = (
     EventName.UNCHECK,
 )
 
-ACTION_VERBS = {
-    EventName.CHECK: 'Check',
-    EventName.CLICK: 'Click',
-    EventName.HOVER: 'Hover over',
-    EventName.UNCHECK: 'Uncheck',
-}
+ACTION_VERBS = MappingProxyType[str, str](
+    {
+        EventName.CHECK: 'Check',
+        EventName.CLICK: 'Click',
+        EventName.HOVER: 'Hover over',
+        EventName.UNCHECK: 'Uncheck',
+    },
+)
 
 
 def _action_lines(event: Event) -> list[str]:
@@ -273,13 +276,14 @@ def markdown_render(events: list[Event], *, title: str = '') -> str:
     :return: The walkthrough.
     """
 
+    heading = [f'# {title}', ''] if title else []
     lines: list[str] = []
-
-    if title:
-        lines += [f'# {title}', '']
 
     for event in events:
         lines += _event_lines(event)
+
+    if lines[:2] != heading:
+        lines = heading + lines
 
     return '\n'.join(lines).strip() + '\n'
 

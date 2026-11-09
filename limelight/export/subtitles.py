@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from limelight.artifacts import SUBTITLES_FILE_NAME
-from limelight.export import TextExport
 from limelight.transcript import EventName, event_offset_ms, event_text
+from limelight.export.export import TextExport
 
 if TYPE_CHECKING:
     from limelight.transcript import Event
@@ -26,15 +26,24 @@ def _cue_end_ms(events: list[Event], *, index: int, start_ms: int) -> int:
     :param index: The position of the cue event.
     :param start_ms: The offset the cue begins at.
     :return: The offset the cue ends at.
+    :raises RuntimeError: If the cue would end before it begins.
     """
 
-    for event_next in events[index + 1:]:
+    end_ms = start_ms + CUE_MS_FALLBACK
+
+    for event_next in events[index + 1 :]:
         offset_ms = event_offset_ms(event_next)
 
         if offset_ms > start_ms:
-            return offset_ms
+            end_ms = offset_ms
 
-    return start_ms + CUE_MS_FALLBACK
+            break
+
+    if end_ms <= start_ms:
+        message = f'the cue at {start_ms}ms would end at {end_ms}ms'
+        raise RuntimeError(message)
+
+    return end_ms
 
 
 def _cue_text(event: Event) -> str:
@@ -54,15 +63,15 @@ def _cue_text(event: Event) -> str:
     return title
 
 
-def _timestamp(ms: int) -> str:
+def _timestamp(offset_ms: int) -> str:
     """
     A function that formats an offset as a WebVTT timestamp.
 
-    :param ms: The milliseconds since the run started.
+    :param offset_ms: The milliseconds since the run started.
     :return: The offset as hours, minutes, seconds, and milliseconds.
     """
 
-    seconds_total, milliseconds = divmod(ms, 1000)
+    seconds_total, milliseconds = divmod(offset_ms, 1000)
     minutes_total, seconds = divmod(seconds_total, 60)
     hours, minutes = divmod(minutes_total, 60)
 

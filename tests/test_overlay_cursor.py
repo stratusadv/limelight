@@ -59,7 +59,7 @@ def test_drag_moves_in_chunks_between_press_and_release() -> None:
     page = FakePage()
     cursor = cursor_build(page)
 
-    cursor.drag(x_start=10.0, x_end=200.0, y=20.0, ms=700)
+    cursor.drag(x_start=10.0, x_end=200.0, y=20.0, duration_ms=700)
 
     move_actions = [action for action in page.mouse.actions if action[0] == 'move']
 
@@ -94,7 +94,7 @@ def test_a_hidden_cursor_still_drives_the_real_mouse() -> None:
     page = FakePage()
     cursor = cursor_build(page, visible=False)
 
-    cursor.drag(x_start=10.0, x_end=200.0, y=20.0, ms=700)
+    cursor.drag(x_start=10.0, x_end=200.0, y=20.0, duration_ms=700)
 
     move_actions = [action for action in page.mouse.actions if action[0] == 'move']
 

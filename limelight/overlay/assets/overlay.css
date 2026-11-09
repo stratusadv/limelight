@@ -66,6 +66,7 @@
     box-shadow: 0 0 0 9999px rgba(8, 11, 18, 0.64),
                 0 0 26px 8px
                 color-mix(in srgb, var(--limelight-spotlight) 85%, transparent);
+    box-sizing: border-box;
     transition: top .45s ease, left .45s ease, width .45s ease, height .45s ease;
 }
 #limelight-spot.nodim {
@@ -328,4 +329,3 @@ html.limelight-motionless [id^="limelight-"]::after {
     transition: none !important;
     animation: none !important;
 }
-

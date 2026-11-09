@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
+from typing_extensions import override
 
 from limelight.gestures import slide_to_end
 
@@ -9,14 +10,14 @@ if TYPE_CHECKING:
 
     from playwright.sync_api import Locator, Page
 
-    from limelight.ledger import LedgerRow
+    from limelight.ledger import Ledger
 
 
 class Narrator(Protocol):
     """
     A protocol for the layer a demo performs its actions through.
 
-    This protocol covers every action a demo takes on the page along with the
+    This protocol covers each action a demo takes on the page along with the
     narration drawn over it, so a run can swap a silent implementation for a
     presenting one without the demo code changing.
     """
@@ -62,11 +63,11 @@ class Narrator(Protocol):
     def metrics(
         self,
         title: str,
-        rows: list[LedgerRow],
+        rows: list[Ledger.Row],
         *,
         kicker: str = '',
         subtitle: str = '',
-        ms: int | None = None,
+        hold_ms: int | None = None,
     ) -> None:
         """
         A method that shows a table of before and after readings.
@@ -75,7 +76,7 @@ class Narrator(Protocol):
         :param rows: The rendered comparison of each metric.
         :param kicker: The line above the heading.
         :param subtitle: The line below the heading.
-        :param ms: The time the table is held on screen, or None for the default.
+        :param hold_ms: The time the table is held on screen, or None for the default.
         """
 
         ...
@@ -86,7 +87,7 @@ class Narrator(Protocol):
         *,
         body: str = '',
         step: str = '',
-        ms: int | None = None,
+        hold_ms: int | None = None,
     ) -> None:
         """
         A method that shows a caption over the page.
@@ -94,16 +95,16 @@ class Narrator(Protocol):
         :param title: The heading for the caption.
         :param body: The paragraph below the heading.
         :param step: The label naming where the demo is in its script.
-        :param ms: The time the caption is held on screen, or None for the default.
+        :param hold_ms: The time the caption is held on screen, or None for the default.
         """
 
         ...
 
-    def pause(self, ms: int | None = None) -> None:
+    def pause(self, hold_ms: int | None = None) -> None:
         """
         A method that holds the demo without showing anything.
 
-        :param ms: The time to hold for, or None for the default.
+        :param hold_ms: The time to hold for, or None for the default.
         """
 
         ...
@@ -155,7 +156,7 @@ class Narrator(Protocol):
         label: str = '',
         dim: bool = True,
         scroll: bool = True,
-        ms: int | None = None,
+        hold_ms: int | None = None,
     ) -> None:
         """
         A method that highlights an element and dims the rest of the page.
@@ -164,7 +165,7 @@ class Narrator(Protocol):
         :param label: The caption shown beside the element.
         :param dim: Whether the rest of the page is dimmed.
         :param scroll: Whether the element is scrolled into view first.
-        :param ms: The time the highlight is held, or None for the default.
+        :param hold_ms: The time the highlight is held, or None for the default.
         """
 
         ...
@@ -184,7 +185,7 @@ class Narrator(Protocol):
         *,
         kicker: str = '',
         subtitle: str = '',
-        ms: int | None = None,
+        hold_ms: int | None = None,
     ) -> None:
         """
         A method that shows a full-screen title card.
@@ -192,7 +193,7 @@ class Narrator(Protocol):
         :param text: The heading for the card.
         :param kicker: The line above the heading.
         :param subtitle: The line below the heading.
-        :param ms: The time the card is held on screen, or None for the default.
+        :param hold_ms: The time the card is held on screen, or None for the default.
         """
 
         ...
@@ -206,17 +207,17 @@ class Narrator(Protocol):
 
         ...
 
-    def wait(self, ms: int) -> None:
+    def wait(self, hold_ms: int) -> None:
         """
         A method that holds the demo for a duration.
 
-        :param ms: The time to hold for.
+        :param hold_ms: The time to hold for.
         """
 
         ...
 
 
-class Silent:
+class Silent(Narrator):
     """
     A narrator that performs the actions and draws nothing.
 
@@ -233,6 +234,7 @@ class Silent:
 
         self._page = page
 
+    @override
     def check(self, locator: Locator) -> None:
         """
         A method that checks a checkbox.
@@ -242,6 +244,7 @@ class Silent:
 
         locator.check()
 
+    @override
     def click(self, locator: Locator, *, force: bool = False) -> None:
         """
         A method that clicks an element.
@@ -252,6 +255,7 @@ class Silent:
 
         locator.click(force=force)
 
+    @override
     def fill(self, locator: Locator, value: str) -> None:
         """
         A method that puts text into a field.
@@ -262,6 +266,7 @@ class Silent:
 
         locator.fill(value)
 
+    @override
     def hover(self, locator: Locator) -> None:
         """
         A method that hovers over an element.
@@ -271,14 +276,15 @@ class Silent:
 
         locator.hover()
 
+    @override
     def metrics(
         self,
         title: str,
-        rows: list[LedgerRow],
+        rows: list[Ledger.Row],
         *,
         kicker: str = '',
         subtitle: str = '',
-        ms: int | None = None,
+        hold_ms: int | None = None,
     ) -> None:
         """
         A method that shows no table, because a silent run draws nothing.
@@ -287,16 +293,17 @@ class Silent:
         :param rows: The rendered comparison of each metric.
         :param kicker: The line above the heading.
         :param subtitle: The line below the heading.
-        :param ms: The time the table would be held on screen.
+        :param hold_ms: The time the table would be held on screen.
         """
 
+    @override
     def narrate(
         self,
         title: str,
         *,
         body: str = '',
         step: str = '',
-        ms: int | None = None,
+        hold_ms: int | None = None,
     ) -> None:
         """
         A method that shows no caption, because a silent run draws nothing.
@@ -304,16 +311,18 @@ class Silent:
         :param title: The heading for the caption.
         :param body: The paragraph below the heading.
         :param step: The label naming where the demo is in its script.
-        :param ms: The time the caption would be held on screen.
+        :param hold_ms: The time the caption would be held on screen.
         """
 
-    def pause(self, ms: int | None = None) -> None:
+    @override
+    def pause(self, hold_ms: int | None = None) -> None:
         """
         A method that holds for nothing, because a silent run has no pacing.
 
-        :param ms: The time the pause would hold for.
+        :param hold_ms: The time the pause would hold for.
         """
 
+    @override
     def press(self, locator: Locator, key: str) -> None:
         """
         A method that presses a key on an element.
@@ -324,6 +333,7 @@ class Silent:
 
         locator.press(key)
 
+    @override
     def screenshot(self, name: str) -> Path | None:
         """
         A method that takes no screenshot, because a silent run captures nothing.
@@ -334,6 +344,7 @@ class Silent:
 
         return None
 
+    @override
     def select(self, locator: Locator, option_label: str) -> None:
         """
         A method that picks an option from a select element by its label.
@@ -344,6 +355,7 @@ class Silent:
 
         locator.select_option(label=option_label)
 
+    @override
     def slide(self, *, track: Locator, thumb: Locator) -> None:
         """
         A method that drags a slider handle to the end of its track.
@@ -354,6 +366,7 @@ class Silent:
 
         slide_to_end(self._page, track=track, thumb=thumb)
 
+    @override
     def spotlight(
         self,
         locator: Locator,
@@ -361,7 +374,7 @@ class Silent:
         label: str = '',
         dim: bool = True,
         scroll: bool = True,
-        ms: int | None = None,
+        hold_ms: int | None = None,
     ) -> None:
         """
         A method that highlights nothing, because a silent run draws nothing.
@@ -370,9 +383,10 @@ class Silent:
         :param label: The caption that would be shown beside the element.
         :param dim: Whether the rest of the page would be dimmed.
         :param scroll: Whether the element would be scrolled into view.
-        :param ms: The time the highlight would be held.
+        :param hold_ms: The time the highlight would be held.
         """
 
+    @override
     def switch_page(self, page: Page) -> None:
         """
         A method that points the narrator at a different page.
@@ -382,13 +396,14 @@ class Silent:
 
         self._page = page
 
+    @override
     def title(
         self,
         text: str,
         *,
         kicker: str = '',
         subtitle: str = '',
-        ms: int | None = None,
+        hold_ms: int | None = None,
     ) -> None:
         """
         A method that shows no title card, because a silent run draws nothing.
@@ -396,9 +411,10 @@ class Silent:
         :param text: The heading for the card.
         :param kicker: The line above the heading.
         :param subtitle: The line below the heading.
-        :param ms: The time the card would be held on screen.
+        :param hold_ms: The time the card would be held on screen.
         """
 
+    @override
     def uncheck(self, locator: Locator) -> None:
         """
         A method that clears a checkbox.
@@ -408,11 +424,12 @@ class Silent:
 
         locator.uncheck()
 
-    def wait(self, ms: int) -> None:
+    @override
+    def wait(self, hold_ms: int) -> None:
         """
         A method that holds the demo for a duration.
 
-        :param ms: The time to hold for.
+        :param hold_ms: The time to hold for.
         """
 
-        self._page.wait_for_timeout(ms)
+        self._page.wait_for_timeout(hold_ms)

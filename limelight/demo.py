@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import contextlib
+import time
 
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlencode
@@ -21,21 +23,22 @@ from limelight.config import DemoConfig
 from limelight.ffmpeg import Ffmpeg
 from limelight.javascript import script
 from limelight.narrator import Silent
-from limelight.overlay import Overlay
 from limelight.overlay.bridge import Bridge
 from limelight.overlay.cursor import Cursor
-from limelight.overlay.keyboard import Keyboard
+from limelight.overlay.keyboard import Keyboard, key_masked, value_masked
+from limelight.overlay.overlay import Overlay
 from limelight.overlay.playback import Playback
-from limelight.transcript import EventName, Transcript
+from limelight.transcript import EventName, Transcript, cue_text
+from limelight.limits import ELEMENT_WAIT_TIMEOUT_MS, HOLD_MS_MAX, SPEED_FACTOR_MAX
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable, Mapping
 
     from playwright.sync_api import Locator, Page
 
     from limelight.application import Application
     from limelight.capture.renderer import FrameRenderer
-    from limelight.ledger import LedgerRow
+    from limelight.ledger import Ledger
     from limelight.narrator import Narrator
     from limelight.theme import Theme
 
@@ -49,22 +52,42 @@ LOGIN_SETTLE_TIMEOUT_MS = 5000
 
 PRINT_STUB_SCRIPT = 'window.print = () => {};'
 
-REVEAL_TIMEOUT_MS = 30_000
 
-
-def _hold_ms_validate(ms: int | None) -> None:
+def _frames_elapsed_seconds(renderer: FrameRenderer) -> float:
     """
-    A function that rejects a hold duration below one millisecond.
+    A function that reads how much footage a renderer has captured.
 
-    :param ms: The duration asked for, or None to accept the default.
-    :raises ValueError: If the duration is not positive.
+    :param renderer: The renderer whose frames are counted.
+    :return: The seconds of footage the captured frames cover.
+    :raises RuntimeError: If the renderer reports negative footage.
     """
 
-    if ms is None:
+    seconds = renderer.frame_count / renderer.fps
+
+    if seconds < 0:
+        message = f'the renderer reports negative footage: {seconds}s'
+        raise RuntimeError(message)
+
+    return seconds
+
+
+def _hold_ms_validate(hold_ms: int | None) -> None:
+    """
+    A function that rejects a hold duration outside the range a demo can play.
+
+    :param hold_ms: The duration asked for, or None to accept the default.
+    :raises ValueError: If the duration is not positive, or passes the hold limit.
+    """
+
+    if hold_ms is None:
         return
 
-    if ms < 1:
-        message = f'ms must be positive: {ms}'
+    if hold_ms < 1:
+        message = f'hold_ms must be positive: {hold_ms}'
+        raise ValueError(message)
+
+    if hold_ms > HOLD_MS_MAX:
+        message = f'hold_ms must not exceed {HOLD_MS_MAX}: {hold_ms}'
         raise ValueError(message)
 
 
@@ -85,7 +108,6 @@ class Demo:
         *,
         name: str,
         config: DemoConfig | None = None,
-        init_scripts: Sequence[str] = (),
         narrator: Narrator | None = None,
         theme: Theme | None = None,
         user: object = None,
@@ -93,15 +115,13 @@ class Demo:
         """
         The constructor for the Demo class.
 
-        The print dialog is stubbed out on every document, because a page that calls
+        The print dialog is stubbed out on each document, because a page that calls
         print blocks the renderer behind a modal the demo has no way to dismiss.
 
         :param page: The page the demo drives.
         :param application: The application under test.
         :param name: The name of the demo, which names its directory under .demos.
         :param config: The configuration for the run, or None to read the environment.
-        :param init_scripts: The scripts run on every document the demo opens, for the
-            chrome a recording is better off without.
         :param narrator: The narrator the actions are performed through, or None to build one.
         :param theme: The palette the overlay draws with, or None for the default.
         :param user: The user the demo is signed in as.
@@ -118,7 +138,6 @@ class Demo:
         self.application = application
         self.config = config
         self.directory = Path(DIRECTORY_ROOT) / name
-        self.init_scripts = tuple(init_scripts)
         self.page = page
         self.user = user
 
@@ -128,12 +147,59 @@ class Demo:
         self._page_prepared(page)
 
         if config.narrated:
-            self._transcript = Transcript(self.directory / TRANSCRIPT_FILE_NAME)
+            if config.video:
+                self._renderer = self._renderer_started()
 
-        if config.narrated and config.video:
-            self._renderer = self._renderer_started()
+            transcript_path = self.directory / TRANSCRIPT_FILE_NAME
+
+            self._transcript = Transcript(transcript_path, clock=self._clock_built())
 
         self._narrator = narrator if narrator is not None else self._narrator_built(theme)
+
+    def _clock_built(self) -> Callable[[], float]:
+        """
+        A method that picks the clock the transcript measures its offsets on.
+
+        A rendered run advances the page one frame at a time, so its offsets are
+        read off the frame count rather than the wall clock. A slow render measured
+        on the wall clock leaves the subtitles and the voiceover running ahead of the
+        footage.
+
+        :return: The clock, in seconds.
+        """
+
+        renderer = self._renderer
+
+        if renderer is None:
+            return time.monotonic
+
+        return partial(_frames_elapsed_seconds, renderer)
+
+    def _hold_ms_for(self, hold_ms: int | None, detail: Mapping[str, object]) -> int | None:
+        """
+        A method that resolves the hold of a spoken cue.
+
+        :param hold_ms: The hold the test asked for, or None for the default.
+        :param detail: The fields of the cue, as recorded to the transcript.
+        :return: The hold asked for, else the hold the configuration gives the cue, else None.
+        :raises RuntimeError: If a configured hold scales past the playable range.
+        """
+
+        if hold_ms is not None:
+            return hold_ms
+
+        hold_ms_spoken = self.config.hold_ms_for(cue_text(detail))
+
+        if hold_ms_spoken is None:
+            return None
+
+        hold_ms_scaled = max(1, round(hold_ms_spoken * self.config.speed_factor))
+
+        if hold_ms_scaled > HOLD_MS_MAX * SPEED_FACTOR_MAX:
+            message = f'the hold for a spoken cue passed the playable range: {hold_ms_scaled}ms'
+            raise RuntimeError(message)
+
+        return hold_ms_scaled
 
     def _narrator_built(self, theme: Theme | None) -> Narrator:
         """
@@ -179,17 +245,15 @@ class Demo:
         if self._transcript is not None:
             self._transcript.record(event, {'target': locator_label(locator), **detail})
 
-    def _page_prepared(self, page: Page) -> None:
+    @staticmethod
+    def _page_prepared(page: Page) -> None:
         """
-        A method that installs the scripts every document the demo opens is given.
+        A method that installs the scripts run on each document the demo opens.
 
         :param page: The page the scripts are installed on.
         """
 
         page.add_init_script(PRINT_STUB_SCRIPT)
-
-        for init_script in self.init_scripts:
-            page.add_init_script(init_script)
 
     def _page_settled(self) -> None:
         """
@@ -254,7 +318,9 @@ class Demo:
         :param value: The text to put into the field.
         """
 
-        self._record_action(EventName.FILL, locator, value=value)
+        if self._transcript is not None:
+            self._record_action(EventName.FILL, locator, value=value_masked(locator, value))
+
         self._narrator.fill(locator, value)
 
     def follow(
@@ -276,7 +342,7 @@ class Demo:
         :param label: The caption shown beside the link, or an empty string to
             highlight nothing.
         :param timeout_ms: The time each attempt waits for the navigation.
-        :raises PlaywrightTimeoutError: If the page never navigates.
+        :raises BarrierError: If the page never navigates.
         """
 
         if label:
@@ -298,7 +364,7 @@ class Demo:
         """
         A method that signs the user in and navigates to a route.
 
-        The login runs before every navigation because a demo can cross into a page
+        The login runs before each navigation because a demo can cross into a page
         that clears the session, and a redirect to the login form would be recorded as
         the destination.
 
@@ -317,8 +383,10 @@ class Demo:
 
         url = self.application.url(route, **url_kwargs)
 
-        if query:
-            url = f'{url}?{urlencode(query)}'
+        query_text = '' if query is None else urlencode(query)
+
+        if query_text:
+            url = f'{url}?{query_text}'
 
         self.page.goto(url)
 
@@ -347,11 +415,11 @@ class Demo:
     def metrics(
         self,
         title: str,
-        rows: list[LedgerRow],
+        rows: list[Ledger.Row],
         *,
         kicker: str = '',
         subtitle: str = '',
-        ms: int | None = None,
+        hold_ms: int | None = None,
     ) -> None:
         """
         A method that shows a table of before and after readings.
@@ -360,11 +428,11 @@ class Demo:
         :param rows: The rendered comparison of each metric.
         :param kicker: The line above the heading.
         :param subtitle: The line below the heading.
-        :param ms: The time the table is held on screen, or None for the default.
-        :raises ValueError: If the duration is not positive.
+        :param hold_ms: The time the table is held on screen, or None for the default.
+        :raises ValueError: If the duration is not positive, or passes the hold limit.
         """
 
-        _hold_ms_validate(ms)
+        _hold_ms_validate(hold_ms)
 
         detail = {
             'title': title,
@@ -374,7 +442,7 @@ class Demo:
         }
 
         self._record(EventName.METRICS, detail)
-        self._narrator.metrics(title, rows, kicker=kicker, subtitle=subtitle, ms=ms)
+        self._narrator.metrics(title, rows, kicker=kicker, subtitle=subtitle, hold_ms=hold_ms)
 
     def narrate(
         self,
@@ -382,7 +450,7 @@ class Demo:
         *,
         body: str = '',
         step: str = '',
-        ms: int | None = None,
+        hold_ms: int | None = None,
     ) -> None:
         """
         A method that shows a caption over the page.
@@ -390,11 +458,11 @@ class Demo:
         :param title: The heading for the caption.
         :param body: The paragraph below the heading.
         :param step: The label naming where the demo is in its script.
-        :param ms: The time the caption is held on screen, or None for the default.
-        :raises ValueError: If the duration is not positive.
+        :param hold_ms: The time the caption is held on screen, or None for the default.
+        :raises ValueError: If the duration is not positive, or passes the hold limit.
         """
 
-        _hold_ms_validate(ms)
+        _hold_ms_validate(hold_ms)
 
         detail = {
             'title': title,
@@ -403,19 +471,22 @@ class Demo:
         }
 
         self._record(EventName.NARRATE, detail)
-        self._narrator.narrate(title, body=body, step=step, ms=ms)
 
-    def pause(self, ms: int | None = None) -> None:
+        hold_ms_resolved = self._hold_ms_for(hold_ms, detail)
+
+        self._narrator.narrate(title, body=body, step=step, hold_ms=hold_ms_resolved)
+
+    def pause(self, hold_ms: int | None = None) -> None:
         """
         A method that holds the demo without showing anything.
 
-        :param ms: The time to hold for, or None for the default.
-        :raises ValueError: If the duration is not positive.
+        :param hold_ms: The time to hold for, or None for the default.
+        :raises ValueError: If the duration is not positive, or passes the hold limit.
         """
 
-        _hold_ms_validate(ms)
+        _hold_ms_validate(hold_ms)
 
-        self._narrator.pause(ms)
+        self._narrator.pause(hold_ms)
 
     def press(self, locator: Locator, key: str) -> None:
         """
@@ -425,7 +496,9 @@ class Demo:
         :param key: The key to press.
         """
 
-        self._record_action(EventName.PRESS, locator, key=key)
+        if self._transcript is not None:
+            self._record_action(EventName.PRESS, locator, key=key_masked(locator, key))
+
         self._narrator.press(locator, key)
 
     def reveal(
@@ -454,7 +527,7 @@ class Demo:
         :raises AssertionError: If the element never appears.
         """
 
-        expect(locator).to_be_visible(timeout=REVEAL_TIMEOUT_MS)
+        expect(locator).to_be_visible(timeout=ELEMENT_WAIT_TIMEOUT_MS)
 
         self.narrate(headline, step=step, body=body)
 
@@ -504,7 +577,7 @@ class Demo:
         label: str = '',
         dim: bool = True,
         scroll: bool = True,
-        ms: int | None = None,
+        hold_ms: int | None = None,
     ) -> None:
         """
         A method that highlights an element and dims the rest of the page.
@@ -516,16 +589,16 @@ class Demo:
         :param label: The caption shown beside the element.
         :param dim: Whether the rest of the page is dimmed.
         :param scroll: Whether the element is scrolled into view first.
-        :param ms: The time the highlight is held, or None for the default.
-        :raises ValueError: If the duration is not positive.
+        :param hold_ms: The time the highlight is held, or None for the default.
+        :raises ValueError: If the duration is not positive, or passes the hold limit.
         """
 
-        _hold_ms_validate(ms)
+        _hold_ms_validate(hold_ms)
 
         if label:
             self._record(EventName.SPOTLIGHT, {'label': label})
 
-        self._narrator.spotlight(locator, label=label, dim=dim, scroll=scroll, ms=ms)
+        self._narrator.spotlight(locator, label=label, dim=dim, scroll=scroll, hold_ms=hold_ms)
 
     def switch_page(self, page: Page) -> None:
         """
@@ -549,7 +622,7 @@ class Demo:
         *,
         kicker: str = '',
         subtitle: str = '',
-        ms: int | None = None,
+        hold_ms: int | None = None,
     ) -> None:
         """
         A method that shows a full-screen title card.
@@ -557,11 +630,11 @@ class Demo:
         :param text: The heading for the card.
         :param kicker: The line above the heading.
         :param subtitle: The line below the heading.
-        :param ms: The time the card is held on screen, or None for the default.
-        :raises ValueError: If the duration is not positive.
+        :param hold_ms: The time the card is held on screen, or None for the default.
+        :raises ValueError: If the duration is not positive, or passes the hold limit.
         """
 
-        _hold_ms_validate(ms)
+        _hold_ms_validate(hold_ms)
 
         detail = {
             'title': text,
@@ -570,7 +643,10 @@ class Demo:
         }
 
         self._record(EventName.TITLE, detail)
-        self._narrator.title(text, kicker=kicker, subtitle=subtitle, ms=ms)
+
+        hold_ms_resolved = self._hold_ms_for(hold_ms, detail)
+
+        self._narrator.title(text, kicker=kicker, subtitle=subtitle, hold_ms=hold_ms_resolved)
 
     def uncheck(self, locator: Locator) -> None:
         """
@@ -582,42 +658,43 @@ class Demo:
         self._record_action(EventName.UNCHECK, locator)
         self._narrator.uncheck(locator)
 
-    def wait(self, ms: int) -> None:
+    def wait(self, hold_ms: int) -> None:
         """
         A method that holds the demo for a duration.
 
-        :param ms: The time to hold for.
-        :raises ValueError: If the duration is not positive.
+        :param hold_ms: The time to hold for.
+        :raises ValueError: If the duration is not positive, or passes the hold limit.
         """
 
-        _hold_ms_validate(ms)
+        _hold_ms_validate(hold_ms)
 
-        self._narrator.wait(ms)
+        self._narrator.wait(hold_ms)
 
     def wait_until(
         self,
         predicate: Callable[[], bool],
         *,
-        attempt_count_max: int = barriers.WAIT_ATTEMPT_COUNT_MAX,
+        attempt_count_max: int = barriers.WAIT_ATTEMPT_COUNT_MAX_DEFAULT,
         description: str = '',
         interval_ms: int = barriers.WAIT_INTERVAL_MS_DEFAULT,
     ) -> None:
         """
         A method that polls a condition until it holds.
 
-        The holds between polls go through the narrator, so a paused or sped-up demo
-        polls on the timeline the viewer sees rather than on the wall clock.
+        The holds between polls go through the narrator, so a rendered demo polls on
+        the frames it draws rather than on the wall clock.
 
         :param predicate: The condition polled between holds.
         :param attempt_count_max: The number of times the condition is polled.
-        :param description: What the condition is waiting for, named in the failure.
+        :param description: The name of the condition, used in the failure message.
         :param interval_ms: The time held between polls.
-        :raises AssertionError: If the condition never holds.
+        :raises ValueError: If the attempt count or the interval is not positive.
+        :raises BarrierError: If the condition never holds.
         """
 
         barriers.wait_until(
-            predicate,
             self._narrator.wait,
+            predicate,
             attempt_count_max=attempt_count_max,
             description=description,
             interval_ms=interval_ms,

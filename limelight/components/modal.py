@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 from playwright.sync_api import expect
 
 from limelight.barriers import trigger_until_visible
+from limelight.javascript import script
+from limelight.limits import ELEMENT_WAIT_TIMEOUT_MS
 
 if TYPE_CHECKING:
     from playwright._impl._internal_structures import AriaRole
@@ -15,17 +17,10 @@ if TYPE_CHECKING:
     from limelight.demo import Demo
 
 
-ELEMENT_WAIT_TIMEOUT_MS = 30_000
-
 FIELD_FILL_ATTEMPT_COUNT_MAX = 4
 FIELD_SETTLE_WAIT_MS = 400
 
-FORM_INVALID_SCRIPT = """
-    form => [...form.elements]
-        .filter(element => !element.checkValidity())
-        .map(element => (element.name || element.id) + ' (' + element.validationMessage + ')')
-        .join(', ')
-"""
+FORM_INVALID_SCRIPT = script('form_invalid.js')
 
 OPEN_SETTLE_WAIT_MS = 1500
 
@@ -35,10 +30,10 @@ class Modal:
     A narrated driver for a modal dialog.
 
     This class opens a modal from the control that dispatches it, fills its
-    fields by the labels a viewer can read, and submits it, narrating and
-    spotlighting each step so the recording explains itself. Every wait is
-    bounded, and a form the browser refuses is reported by name rather than
-    left as a click that did nothing.
+    fields by the labels a viewer can read, and submits it. Each step is narrated
+    and spotlighted so the recording explains itself. The waits are bounded, and
+    a form the browser refuses is reported by name rather than left as a click
+    that did nothing.
 
     The defaults describe plain HTML: a dialog found by its ARIA role, fields
     found through their labels, and openers that are links or buttons. A project
@@ -78,7 +73,9 @@ class Modal:
         :return: The invalid controls and their messages, or an empty string.
         """
 
-        return self.content.locator(self.form_selector).first.evaluate(FORM_INVALID_SCRIPT)
+        form = self.content.locator(self.form_selector).first
+
+        return str(form.evaluate(FORM_INVALID_SCRIPT))
 
     def _opener(self, button: str, *, within: str) -> Locator:
         """
@@ -188,7 +185,7 @@ class Modal:
 
         return self.group(label).locator(self.field_selector).first
 
-    def fill(self, label: str, value: str, *, headline: str = '', body: str = '') -> None:
+    def fill(self, label: str, *, value: str, headline: str = '', body: str = '') -> None:
         """
         A method that narrates and fills one field of the open modal.
 
@@ -263,9 +260,10 @@ class Modal:
 
         is_named = isinstance(button, str)
 
-        if within and not is_named:
-            message = 'within scopes a control by its text, so it needs a control name'
-            raise ValueError(message)
+        if within:
+            if not is_named:
+                message = 'within scopes a control by its text, so it needs a control name'
+                raise ValueError(message)
 
         opener = self._opener(button, within=within) if is_named else button
         caption = label or (f'Click "{button}"' if is_named else '')
@@ -295,10 +293,10 @@ class Modal:
 
         :param trigger: The locator for the element that opens the modal.
         :param reveals_text: The exact text of an option the open modal shows.
-        :raises AssertionError: If the modal never opens.
+        :raises BarrierError: If the modal never opens.
         """
 
-        trigger_until_visible(trigger.click, self.option(reveals_text))
+        trigger_until_visible(self.option(reveals_text), lambda: self.demo.click(trigger))
 
     def option(self, text: str) -> Locator:
         """

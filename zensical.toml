@@ -1,0 +1,94 @@
+[project]
+site_name = "limelight"
+site_description = "A narration layer for Playwright that turns end-to-end tests into demos."
+site_url = "https://stratusadv.github.io/limelight/"
+repo_name = "stratusadv/limelight"
+repo_url = "https://github.com/stratusadv/limelight"
+copyright = "Copyright (c) 2026 Stratus Advanced Technologies"
+extra_css = ["assets/stylesheets/brand.css"]
+nav = [
+    { "Overview" = "overview.md" },
+    { "Install" = "install.md" },
+    { "Quick Start" = "quick-start.md" },
+    { "Writing A Demo" = "writing-a-demo.md" },
+    { "Scenes And Components" = "scenes-and-components.md" },
+    { "Barriers" = "barriers.md" },
+    { "Django" = "django.md" },
+    { "Rendering Video" = "rendering-video.md" },
+    { "Configuration" = "configuration.md" },
+]
+
+[project.theme]
+favicon = "assets/limelight-icon-on-dark-32.png"
+features = [
+    "content.code.copy",
+    "content.tabs.link",
+    "navigation.footer",
+    "navigation.indexes",
+    "navigation.instant",
+    "navigation.instant.prefetch",
+    "navigation.path",
+    "navigation.sections",
+    "navigation.top",
+    "navigation.tracking",
+    "search.highlight",
+]
+language = "en"
+logo = "assets/limelight-mark-on-light.svg"
+
+[project.theme.font]
+code = "Fragment Mono"
+text = "Manrope"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to light mode"
+
+[project.markdown_extensions]
+admonition = {}
+attr_list = {}
+tables = {}
+toc.permalink = true
+pymdownx.details = {}
+pymdownx.highlight.anchor_linenums = true
+pymdownx.highlight.line_spans = "__span"
+pymdownx.highlight.pygments_lang_class = true
+pymdownx.inlinehilite = {}
+pymdownx.keys = {}
+pymdownx.snippets.base_path = ["."]
+pymdownx.snippets.check_paths = true
+pymdownx.superfences = {}
+pymdownx.tabbed.alternate_style = true
+
+[project.plugins.api-autonav]
+modules = ["limelight"]
+
+[project.plugins.api-autonav.module_options."^limelight$"]
+filters = ["!^_", "!^Scene$", "!^World$"]
+
+[project.plugins.mkdocstrings.handlers.python.options]
+docstring_section_style = "list"
+docstring_style = "sphinx"
+extensions = ["scripts/literal_blocks.py"]
+filters = "public"
+members_order = "source"
+merge_init_into_class = true
+show_if_no_docstring = true
+show_root_full_path = true
+show_root_heading = true
+show_signature = false
+show_signature_annotations = false
+show_source = true
+show_symbol_type_heading = true

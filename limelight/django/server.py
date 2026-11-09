@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import socketserver
+
 from typing import TYPE_CHECKING
+from typing_extensions import override
 
 from django.core.servers.basehttp import ThreadedWSGIServer
 from django.test.testcases import LiveServerThread, QuietWSGIRequestHandler
@@ -25,12 +28,13 @@ class SequentialWSGIServer(ThreadedWSGIServer):
     """
     A live server that handles one request at a time.
 
-    This class serves each request on the calling thread, so every query reaches
+    This class serves each request on the calling thread, so each query reaches
     the same connection and an in-memory SQLite database stays visible to the test
     that created it.
     """
 
-    def process_request(  # ty: ignore[missing-override-decorator]
+    @override
+    def process_request(
         self,
         request: socket | tuple[bytes, socket],
         client_address: str | tuple[str, int],
@@ -42,18 +46,14 @@ class SequentialWSGIServer(ThreadedWSGIServer):
         :param client_address: The address the request came from.
         """
 
-        try:
-            self.finish_request(request, client_address)
-        except Exception:
-            self.handle_error(request, client_address)
-        finally:
-            self.shutdown_request(request)
+        socketserver.ThreadingMixIn.process_request_thread(self, request, client_address)
 
 
 class SequentialLiveServerThread(LiveServerThread):
     """A live server thread that serves requests sequentially."""
 
-    def _create_server(  # ty: ignore[missing-override-decorator]
+    @override
+    def _create_server(
         self,
         connections_override: dict[str, object] | None = None,
     ) -> SequentialWSGIServer:

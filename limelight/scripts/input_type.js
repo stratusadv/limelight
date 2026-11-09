@@ -1,1 +1,4 @@
-element => element.tagName === 'INPUT' ? (element.type || 'text').toLowerCase() : ''
+element => {
+"use strict";var limelight=(()=>{var s=Object.defineProperty;var u=Object.getOwnPropertyDescriptor;var p=Object.getOwnPropertyNames;var c=Object.prototype.hasOwnProperty;var f=(e,t)=>{for(var n in t)s(e,n,{get:t[n],enumerable:!0})},g=(e,t,n,i)=>{if(t&&typeof t=="object"||typeof t=="function")for(let r of p(t))!c.call(e,r)&&r!==n&&s(e,r,{get:()=>t[r],enumerable:!(i=u(t,r))||i.enumerable});return e};var l=e=>g(s({},"__esModule",{value:!0}),e);var x={};f(x,{inputType:()=>T});var o=class extends Error{constructor(t,n){super(t,n),this.name="AssertionError"}};function a(e,t){if(!e)throw new o(t)}var m="INPUT",w="text";function T(e){if(a(e.tagName.length>0,"an element has a tag name"),a(e.ownerDocument.defaultView!==null,"an element sits on a live page"),e.tagName!==m)return"";let t=Reflect.get(e,"type");return typeof t!="string"?w:t.toLowerCase()}return l(x);})();
+return limelight.inputType(element);
+}

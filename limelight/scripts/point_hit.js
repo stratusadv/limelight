@@ -1,15 +1,4 @@
 (element, point) => {
-    const found = document.elementFromPoint(point.x, point.y);
-
-    if (found === null) {
-        return false;
-    }
-
-    if (element !== found && !element.contains(found)) {
-        return false;
-    }
-
-    const control = found.closest('button, input, select, textarea');
-
-    return control === null || control.disabled !== true;
+"use strict";var limelight=(()=>{var s=Object.defineProperty;var u=Object.getOwnPropertyDescriptor;var l=Object.getOwnPropertyNames;var c=Object.prototype.hasOwnProperty;var f=(e,t)=>{for(var r in t)s(e,r,{get:t[r],enumerable:!0})},m=(e,t,r,n)=>{if(t&&typeof t=="object"||typeof t=="function")for(let i of l(t))!c.call(e,i)&&i!==r&&s(e,i,{get:()=>t[i],enumerable:!(n=u(t,i))||n.enumerable});return e};var d=e=>m(s({},"__esModule",{value:!0}),e);var x={};f(x,{isPointHit:()=>b});var o=class extends Error{constructor(t,r){super(t,r),this.name="AssertionError"}};function a(e,t){if(!e)throw new o(t)}var p="button, input, select, textarea";function b(e,t){a(Number.isFinite(t.x),"a hit test reads a finite point"),a(Number.isFinite(t.y),"a hit test reads a finite point");let r=document.elementFromPoint(t.x,t.y);if(r===null||!e.contains(r))return!1;let n=r.closest(p);return n===null?!0:Reflect.get(n,"disabled")!==!0}return d(x);})();
+return limelight.isPointHit(element, point);
 }

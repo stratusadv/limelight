@@ -100,13 +100,15 @@ def test_a_card_without_a_subtitle_or_rows_renders_plainly() -> None:
 
 
 def test_a_metrics_card_carries_its_subtitle() -> None:
-    events: list[dict[str, object]] = [{
-        'event': 'metrics',
-        'offset_ms': 0,
-        'title': 'Totals',
-        'subtitle': 'Before and after',
-        'rows': [],
-    }]
+    events: list[dict[str, object]] = [
+        {
+            'event': 'metrics',
+            'offset_ms': 0,
+            'title': 'Totals',
+            'subtitle': 'Before and after',
+            'rows': [],
+        }
+    ]
 
     content = markdown_render(events, title='Demo')
 
@@ -117,3 +119,10 @@ def test_an_action_without_a_target_renders_no_bullet() -> None:
     events: list[dict[str, object]] = [{'event': 'hover', 'offset_ms': 0, 'target': ''}]
 
     assert markdown_render(events, title='Demo').strip() == '# Demo'
+
+
+def test_a_title_matching_the_opening_card_is_written_once() -> None:
+    content = markdown_render(events_sample(), title='Order Approval')
+
+    assert content.count('# Order Approval') == 1
+    assert content.startswith('# Order Approval\n\n*Chapter One*\n')

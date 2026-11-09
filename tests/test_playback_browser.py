@@ -5,15 +5,15 @@ import time
 import pytest
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import Error as PlaywrightError, sync_playwright
 
 from limelight.config import SPEED_FACTORS, DemoConfig
-from limelight.overlay import Overlay
 from limelight.overlay.bridge import Bridge
 from limelight.overlay.cursor import Cursor
 from limelight.overlay.keyboard import Keyboard
+from limelight.overlay.overlay import Overlay
 from limelight.overlay.playback import Playback
 
 if TYPE_CHECKING:
@@ -152,6 +152,7 @@ PAGE_FRAMED = """
 </body></html>
 """
 
+TIMER_DELAY_MS_MAX = 2_147_483_647
 URL_FRAMED = 'http://limelight.test/framed'
 URL_UNDER_BAR = 'http://limelight.test/underbar'
 URL_ANIMATED = 'http://limelight.test/animated'
@@ -289,7 +290,9 @@ def overlay_build(page: Page, config: DemoConfig) -> Overlay:
 
 
 def control_peek(page: Page) -> dict[str, object]:
-    return page.evaluate('() => window.__limelight.controlPeek()')
+    state = page.evaluate('() => window.__limelight.controlPeek()')
+
+    return cast('dict[str, object]', state)
 
 
 def elapsed_ms(action: Callable[[], None]) -> float:
@@ -337,7 +340,7 @@ def test_speed_survives_a_page_navigation(demo_page: tuple[Page, Overlay]) -> No
     page.locator('#limelight-control-faster').click()
     page.goto(URL_SECOND)
 
-    assert control_peek(page)['speedFactor'] == 1.5
+    assert control_peek(page)['speedFactor'] == pytest.approx(1.5)
 
 
 def test_space_pauses_with_focus_on_the_element_just_clicked(
@@ -438,7 +441,7 @@ def test_skip_pressed_between_steps_survives_to_the_next_hold(
 
     page.locator('#limelight-control-skip').click()
 
-    held_ms = elapsed_ms(lambda: overlay.spotlight(page.locator('#go'), label='here', ms=3000))
+    held_ms = elapsed_ms(lambda: overlay.spotlight(page.locator('#go'), label='here', hold_ms=3000))
 
     assert held_ms < 1500
 
@@ -500,6 +503,26 @@ def test_settle_ignores_the_overlays_own_fade(animated_page: tuple[Page, Overlay
     page.evaluate('() => window.__limelight.backdropShow()')
 
     assert settle_ms(page) < 300
+
+
+def test_settle_takes_the_longest_wait_a_timer_can_count(
+    animated_page: tuple[Page, Overlay],
+) -> None:
+    page, _ = animated_page
+
+    blocking_count = page.evaluate(
+        '(ms) => window.__limelight.settle({ms})',
+        TIMER_DELAY_MS_MAX,
+    )
+
+    assert blocking_count == 0
+
+
+def test_settle_refuses_a_wait_past_the_timer_limit(animated_page: tuple[Page, Overlay]) -> None:
+    page, _ = animated_page
+
+    with pytest.raises(PlaywrightError, match='a settle waits no longer than a timer can count'):
+        page.evaluate('(ms) => window.__limelight.settle({ms})', TIMER_DELAY_MS_MAX + 1)
 
 
 def test_configured_turbo_starts_the_bar_engaged(turbo_page: tuple[Page, Overlay]) -> None:
@@ -583,10 +606,12 @@ def test_control_bar_clicks_do_not_steal_focus_from_the_application(
 
 
 def bar_center(page: Page) -> dict[str, float]:
-    return page.evaluate(
+    center = page.evaluate(
         "() => { let r = document.getElementById('limelight-control').getBoundingClientRect();"
         ' return {x: r.x + r.width / 2, y: r.y + r.height / 2}; }'
     )
+
+    return cast('dict[str, float]', center)
 
 
 def test_control_press_survives_the_demo_driving_the_mouse(

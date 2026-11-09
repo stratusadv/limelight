@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 
 
 def expect_stub(locator: object) -> SimpleNamespace:
+    _ = locator
+
     return SimpleNamespace(to_be_visible=lambda: None)
 
 

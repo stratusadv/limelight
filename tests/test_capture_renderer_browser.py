@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools
+import time
 
 import pytest
 
@@ -108,3 +109,57 @@ def test_static_frames_repeat_the_last_image(
 
     assert len(frames) >= 6
     assert len(images) == 1
+
+
+def test_page_time_follows_the_frames_rather_than_the_wall_clock(
+    rendered_page: tuple[Page, str],
+    tmp_path: Path,
+) -> None:
+    page, endpoint = rendered_page
+    renderer = FrameRenderer(page, endpoint=endpoint, fps=FPS)
+
+    renderer.start(DirectorySink(tmp_path / 'frames'))
+
+    frame_count_before = renderer.frame_count
+    page_ms_before = page.evaluate('performance.now()')
+
+    time.sleep(1.0)
+    renderer.wait_ms(500)
+
+    page_ms_after = page.evaluate('performance.now()')
+    frame_count_after = renderer.frame_count
+
+    renderer.stop()
+
+    frames_between = frame_count_after - frame_count_before
+    interval_ms = 1000 / FPS
+
+    assert (frames_between - 1) * interval_ms <= page_ms_after - page_ms_before
+    assert page_ms_after - page_ms_before <= (frames_between + 2) * interval_ms
+
+
+def test_attaching_keeps_the_color_scheme_of_the_page(
+    rendered_page: tuple[Page, str],
+    tmp_path: Path,
+) -> None:
+    page_light, endpoint = rendered_page
+    browser = page_light.context.browser
+
+    assert browser is not None
+
+    context = browser.new_context(color_scheme='dark', viewport={'width': 640, 'height': 360})
+    page = context.new_page()
+
+    page.set_content(PAGE_HTML)
+
+    renderer = FrameRenderer(page, endpoint=endpoint, fps=FPS)
+
+    renderer.start(DirectorySink(tmp_path / 'frames'))
+    renderer.wait_ms(100)
+
+    dark = page.evaluate("matchMedia('(prefers-color-scheme: dark)').matches")
+
+    renderer.stop()
+    context.close()
+
+    assert dark is True

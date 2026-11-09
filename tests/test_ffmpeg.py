@@ -6,6 +6,7 @@ from pathlib import Path
 from subprocess import CompletedProcess
 
 from limelight import ffmpeg
+from limelight import RenderError
 from limelight.ffmpeg import Encoder, Ffmpeg
 
 from fakes import FakeEncoder
@@ -30,6 +31,8 @@ def test_run_prefixes_the_located_binary(monkeypatch: pytest.MonkeyPatch) -> Non
         capture_output: bool,
         check: bool,
     ) -> CompletedProcess[bytes]:
+        _ = (capture_output, check)
+
         commands.append(command)
 
         return CompletedProcess(command, 0, b'', b'')
@@ -39,15 +42,17 @@ def test_run_prefixes_the_located_binary(monkeypatch: pytest.MonkeyPatch) -> Non
 
     Ffmpeg().run(['-i', 'video.mp4', 'render.mp4'])
 
-    assert commands == [[
-        '/usr/bin/ffmpeg',
-        '-y',
-        '-loglevel',
-        'error',
-        '-i',
-        'video.mp4',
-        'render.mp4',
-    ]]
+    assert commands == [
+        [
+            '/usr/bin/ffmpeg',
+            '-y',
+            '-loglevel',
+            'error',
+            '-i',
+            'video.mp4',
+            'render.mp4',
+        ]
+    ]
 
 
 def test_run_reports_what_ffmpeg_said_about_a_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -57,19 +62,21 @@ def test_run_reports_what_ffmpeg_said_about_a_failure(monkeypatch: pytest.Monkey
         capture_output: bool,
         check: bool,
     ) -> CompletedProcess[bytes]:
+        _ = (capture_output, check)
+
         return CompletedProcess(command, 1, b'', b'video.mp4: No such file or directory\n')
 
     monkeypatch.setattr('limelight.ffmpeg.shutil.which', lambda name: f'/usr/bin/{name}')
     monkeypatch.setattr('limelight.ffmpeg.subprocess.run', run_stub)
 
-    with pytest.raises(RuntimeError, match='No such file or directory'):
+    with pytest.raises(RenderError, match='No such file or directory'):
         Ffmpeg().run(['-i', 'video.mp4', 'render.mp4'])
 
 
 def test_missing_binary_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr('limelight.ffmpeg.shutil.which', lambda name: None)
+    monkeypatch.setattr('limelight.ffmpeg.shutil.which', lambda _: None)
 
-    with pytest.raises(RuntimeError, match='ffmpeg not found'):
+    with pytest.raises(RenderError, match='ffmpeg not found'):
         Ffmpeg().run([])
 
 
@@ -114,7 +121,7 @@ def test_mp4_arguments_audio_track_mapped() -> None:
     assert arguments[:4] == ['-i', 'video.mp4', '-i', 'voiceover.wav']
     map_index = arguments.index('-map')
 
-    assert arguments[map_index:map_index + 4] == ['-map', '0:v:0', '-map', '1:a:0']
+    assert arguments[map_index : map_index + 4] == ['-map', '0:v:0', '-map', '1:a:0']
     assert '-c:a' in arguments
     assert '-shortest' in arguments
 
@@ -202,11 +209,9 @@ def test_frame_arguments_refuse_a_crf_beyond_the_ceiling(tmp_path: Path) -> None
 
 def test_pipe_opens_a_process_with_a_pipe_for_frames() -> None:
     process = Ffmpeg(binary='cat').pipe(['-'])
+    stdin = process.stdin
 
-    try:
-        assert process.stdin is not None
-    finally:
-        if process.stdin is not None:
-            process.stdin.close()
+    assert stdin is not None
 
-        process.wait(timeout=5)
+    stdin.close()
+    process.wait(timeout=5)

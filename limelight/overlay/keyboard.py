@@ -18,8 +18,48 @@ if TYPE_CHECKING:
 CHARACTER_MS = 55
 DRIVE_SLACK_MS = 5000
 INPUT_TYPES_UNTYPEABLE = ('color', 'date', 'datetime-local', 'month', 'range', 'time', 'week')
+INPUT_TYPE_MASKED = 'password'
 INPUT_TYPE_SCRIPT = script('input_type.js')
 INPUT_TYPE_TIMEOUT_MS = 2000
+KEYS_UNMASKED = ('Enter', 'Tab')
+VALUE_MASK = '********'
+
+
+def _input_type_of(locator: Locator) -> str | None:
+    """
+    A function that reads the type of the input a locator points at.
+
+    :param locator: The locator for the field.
+    :return: The lowercase input type, an empty string for an element that is not an
+        input, or None if the type could not be read.
+    """
+
+    input_type = None
+
+    with contextlib.suppress(PlaywrightError):
+        input_type_raw = locator.evaluate(INPUT_TYPE_SCRIPT, timeout=INPUT_TYPE_TIMEOUT_MS)
+        input_type = str(input_type_raw or '')
+
+    return input_type
+
+
+def _is_masked(locator: Locator) -> bool:
+    """
+    A function that reports whether a field's value is kept off the key display and the transcript.
+
+    A field whose type cannot be read counts as masked, so a failed read never puts
+    a password on screen or on disk.
+
+    :param locator: The locator for the field.
+    :return: True if the field is a password input or its type could not be read, False otherwise.
+    """
+
+    input_type = _input_type_of(locator)
+
+    if input_type is None:
+        return True
+
+    return input_type == INPUT_TYPE_MASKED
 
 
 class Keyboard:
@@ -41,7 +81,7 @@ class Keyboard:
         self._bridge = bridge
         self._playback = playback
 
-    def _drive_begin(self, ms: float) -> None:
+    def _drive_begin(self, duration_ms: float) -> None:
         """
         A method that opens the window in which input is treated as driven.
 
@@ -49,10 +89,10 @@ class Keyboard:
         land late under load, and input arriving after the window closes is read as a
         viewer typing.
 
-        :param ms: The expected duration of the input.
+        :param duration_ms: The expected duration of the input.
         """
 
-        argument = {'ms': ms + DRIVE_SLACK_MS}
+        argument = {'ms': duration_ms + DRIVE_SLACK_MS}
 
         self._bridge.call('inputDriveBegin', argument)
 
@@ -86,7 +126,7 @@ class Keyboard:
         :param key: The key to press.
         """
 
-        argument = {'text': key}
+        argument = {'text': key_masked(locator, key)}
         self._bridge.call('keyFlash', argument)
         self._drive_begin(0)
 
@@ -105,7 +145,9 @@ class Keyboard:
         delay_ms = CHARACTER_MS / self._playback.speed_factor_live
 
         self._drive_begin(len(value) * delay_ms)
-        self._bridge.call('keyHudEnable')
+
+        if not _is_masked(locator):
+            self._bridge.call('keyHudEnable')
 
         locator.fill('')
 
@@ -117,7 +159,8 @@ class Keyboard:
         self._bridge.call('keyHudDisable')
         self._drive_end()
 
-    def types_faithfully(self, locator: Locator) -> bool:
+    @staticmethod
+    def types_faithfully(locator: Locator) -> bool:
         """
         A method that reports whether a field shows the characters typed into it.
 
@@ -129,10 +172,37 @@ class Keyboard:
         :return: True if the field can be typed into character by character, False otherwise.
         """
 
-        input_type = ''
+        return _input_type_of(locator) not in INPUT_TYPES_UNTYPEABLE
 
-        with contextlib.suppress(PlaywrightError):
-            input_type_raw = locator.evaluate(INPUT_TYPE_SCRIPT, timeout=INPUT_TYPE_TIMEOUT_MS)
-            input_type = str(input_type_raw or '')
 
-        return input_type not in INPUT_TYPES_UNTYPEABLE
+def key_masked(locator: Locator, key: str) -> str:
+    """
+    A function that masks a key pressed into a masked field.
+
+    The Enter and Tab keys stay readable, because they move between fields or submit
+    the form and carry no part of the value.
+
+    :param locator: The locator for the element the key is pressed on.
+    :param key: The key to press.
+    :return: The key, or the mask if the element is a masked field.
+    """
+
+    if key in KEYS_UNMASKED:
+        return key
+
+    return value_masked(locator, key)
+
+
+def value_masked(locator: Locator, value: str) -> str:
+    """
+    A function that masks a value typed into a masked field.
+
+    :param locator: The locator for the field being typed into.
+    :param value: The text to type.
+    :return: The value, or the mask if the field is masked.
+    """
+
+    if _is_masked(locator):
+        return VALUE_MASK
+
+    return value

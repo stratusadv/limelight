@@ -1,0 +1,24 @@
+extend-exclude = [
+    "limelight/overlay/assets/overlay.js",
+    "limelight/scripts/*.js",
+]
+ignore = [
+    "TS016",
+    "TS022",
+    "TS037",
+]
+preview = true
+select = ["ALL"]
+
+[extend-per-file-ignores]
+"build.ts" = ["TS004", "TS032"]
+"eslint.config.ts" = ["TS004", "TS025", "TS032"]
+"examples/*.py" = ["TS004", "TS017"]
+"examples/*.ts" = ["TS004", "TS032"]
+"limelight/**/*.py" = ["TS004"]
+"limelight/pytest_plugin.py" = ["TS033"]
+"scripts/*.py" = ["TS004"]
+"src/**/*.ts" = ["TS032"]
+"src/**/*.test.ts" = ["TS004"]
+"src/assert.ts" = ["TS004"]
+"tests/**/*.py" = ["TS004", "TS014", "TS017", "TS026", "TS033", "TS043"]

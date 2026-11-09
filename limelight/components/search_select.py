@@ -90,8 +90,7 @@ class SearchAndSelect:
         """
 
         root = (
-            container
-            .locator(cls.root_selector)
+            container.locator(cls.root_selector)
             .filter(has=container.page.locator(cls.toggle_selector))
             .last
         )
@@ -101,7 +100,7 @@ class SearchAndSelect:
     @property
     def choices(self) -> Locator:
         """
-        A property that gets every choice the open dropdown offers.
+        A property that gets the choices the open dropdown offers.
 
         :return: The locator for the choices.
         """
@@ -176,11 +175,15 @@ class SearchAndSelect:
         :raises AssertionError: If the dropdown never closes onto the choice.
         """
 
-        if self.is_searchable:
+        searchable = self.is_searchable
+
+        if search:
+            if not searchable:
+                message = f'the field offers no search box, so "{search}" cannot be typed'
+                raise ValueError(message)
+
+        if searchable:
             self.search_field.fill(search or label)
-        elif search:
-            message = f'the field offers no search box, so "{search}" cannot be typed'
-            raise ValueError(message)
 
         self.choice(label, exact=exact).click(force=True)
 
@@ -191,7 +194,7 @@ class SearchAndSelect:
         """
         A method that clicks the toggle until the dropdown is showing.
 
-        :raises AssertionError: If the dropdown never opens.
+        :raises BarrierError: If the dropdown never opens.
         """
 
-        trigger_until_visible(self.toggle.click, self.dropdown)
+        trigger_until_visible(self.dropdown, self.toggle.click)

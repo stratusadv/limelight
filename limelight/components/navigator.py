@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, expect
 
+from limelight.javascript import script
+
 if TYPE_CHECKING:
     from playwright.sync_api import Locator
 
@@ -14,17 +16,17 @@ if TYPE_CHECKING:
 
 NAVIGATION_WAIT_TIMEOUT_MS = 5000
 
-SCROLL_INTO_VIEW_SCRIPT = 'el => el.scrollIntoView({block: "center"})'
+SCROLL_INTO_VIEW_SCRIPT = script('scroll_into_view.js')
 
 
 class Navigator:
     """
     A narrated driver for a navigation menu.
 
-    This class opens a destination by the text a viewer reads on its link,
-    narrating the move, spotlighting the link, and waiting for the page it leads
-    to rather than assuming the click landed. A menu long enough to scroll is
-    brought into view first, because a spotlight drawn over an offscreen link
+    This class finds a destination by the text a viewer reads on its link,
+    narrates the move, spotlights the link, and waits for the page it leads to
+    rather than assuming the click landed. A link in a menu long enough to scroll
+    is brought into view first, because a spotlight drawn over an offscreen link
     highlights nothing.
 
     The default selector describes a plain anchor. A project whose menu is drawn
@@ -57,7 +59,9 @@ class Navigator:
 
     def _scrolled_into_view(self, link: Locator) -> None:
         """
-        A method that brings a link into view, tolerating a menu that cannot scroll.
+        A method that brings a link into the middle of the view.
+
+        The scroll is skipped if the link cannot be reached within the wait timeout.
 
         :param link: The locator for the link.
         """

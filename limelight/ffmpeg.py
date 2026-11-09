@@ -5,6 +5,8 @@ import subprocess
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from limelight.errors import RenderError
+
 if TYPE_CHECKING:
     from pathlib import Path
     from subprocess import Popen
@@ -91,14 +93,14 @@ class Ffmpeg:
         never renders a video artifact runs on a machine without ffmpeg installed.
 
         :return: The absolute path to the binary.
-        :raises RuntimeError: If the binary is not on PATH.
+        :raises RenderError: If the binary is not on PATH.
         """
 
         path = shutil.which(self.binary)
 
         if path is None:
             message = f'{self.binary} not found on PATH; install it to render video artifacts'
-            raise RuntimeError(message)
+            raise RenderError(message)
 
         return path
 
@@ -108,7 +110,7 @@ class Ffmpeg:
 
         :param arguments: The command-line arguments for ffmpeg.
         :return: The running ffmpeg process.
-        :raises RuntimeError: If the binary is not on PATH.
+        :raises RenderError: If the binary is not on PATH.
         """
 
         command = [self._locate(), '-y', '-loglevel', 'error', *arguments]
@@ -124,7 +126,7 @@ class Ffmpeg:
         the filter it could not build.
 
         :param arguments: The command-line arguments for ffmpeg.
-        :raises RuntimeError: If the binary is not on PATH, or ffmpeg exits with a
+        :raises RenderError: If the binary is not on PATH, or ffmpeg exits with a
             non-zero status.
         """
 
@@ -136,7 +138,7 @@ class Ffmpeg:
             detail = outcome.stderr.decode('utf-8', 'replace').strip()
 
             message = f'ffmpeg exited with status {outcome.returncode}: {detail}'
-            raise RuntimeError(message)
+            raise RenderError(message)
 
 
 def arguments_frames(
@@ -286,7 +288,7 @@ def arguments_voiceover(cues: list[tuple[int, Path]], destination: Path) -> list
     A function that builds the ffmpeg arguments for one voiceover track.
 
     Each clip is delayed to its own cue and the delayed streams are mixed, with
-    normalization off because amix otherwise divides every input by the number of
+    normalization off because amix otherwise divides each input by the number of
     inputs and a long transcript fades to silence.
 
     :param cues: The offset in milliseconds and the audio file for each clip.

@@ -32,7 +32,7 @@ class Camera:
 
         directory_text = str(directory).strip()
 
-        if directory_text in ('', '.'):
+        if directory_text in {'', '.'}:
             message = f'directory must be a real path (got "{directory}")'
             raise ValueError(message)
 

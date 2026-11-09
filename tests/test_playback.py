@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import pytest
 
+from limelight import OverlayError
 from limelight.config import DemoConfig
-from limelight.overlay import Overlay
 from limelight.overlay.assets import OVERLAY_CSS
 from limelight.overlay.bridge import Bridge
 from limelight.overlay.cursor import Cursor
 from limelight.overlay.keyboard import Keyboard
+from limelight.overlay.overlay import Overlay
 from limelight.overlay.playback import Playback
 from limelight.theme import Theme
 
@@ -189,7 +190,7 @@ def test_pause_beyond_cap_raises() -> None:
 
     page.control_states = [control_state(paused=True)]
 
-    with pytest.raises(TimeoutError, match='paused longer'):
+    with pytest.raises(OverlayError, match='paused longer'):
         playback.wait(100)
 
 
@@ -229,7 +230,7 @@ def test_paused_control_holds_then_continues() -> None:
 
     playback.wait(100)
 
-    assert page.waits_ms[0] == 100.0
+    assert page.waits_ms[0] == pytest.approx(100.0)
     assert len(page.waits_ms) > 1
 
 
@@ -250,7 +251,7 @@ def test_a_pause_that_never_lifts_aborts() -> None:
 
     page.control_states = [control_state(paused=True)]
 
-    with pytest.raises(TimeoutError, match='demo paused longer than'):
+    with pytest.raises(OverlayError, match='demo paused longer than'):
         playback.wait(100)
 
 
@@ -260,7 +261,7 @@ def test_a_step_that_never_advances_aborts() -> None:
 
     page.control_states = [control_state()]
 
-    with pytest.raises(TimeoutError, match='step wait exceeded'):
+    with pytest.raises(OverlayError, match='step wait exceeded'):
         playback.wait(100)
 
 
@@ -292,11 +293,11 @@ def test_live_speed_factor_clamps_a_control_bar_extreme() -> None:
 
     page.control_peeks = [control_state(speed_factor=100000.0)]
 
-    assert playback.speed_factor_live == 1000.0
+    assert playback.speed_factor_live == pytest.approx(1000.0)
 
     page.control_peeks = [control_state(speed_factor=0.0001)]
 
-    assert playback.speed_factor_live == 0.1
+    assert playback.speed_factor_live == pytest.approx(0.1)
 
 
 def test_live_speed_factor_falls_back_without_a_control_bar() -> None:
@@ -304,4 +305,15 @@ def test_live_speed_factor_falls_back_without_a_control_bar() -> None:
     config = DemoConfig(mode='narrate', step_ms=1000, speed_factor=2.0, video=True)
     playback = playback_build(page, config)
 
-    assert playback.speed_factor_live == 2.0
+    assert playback.speed_factor_live == pytest.approx(2.0)
+
+
+def test_a_pending_skip_does_not_cut_an_ungated_wait_short() -> None:
+    page = FakePage()
+    playback = playback_build(page)
+
+    page.control_peeks = [control_state(skip=True)]
+
+    playback.wait(250, gated=False)
+
+    assert sum(page.waits_ms) == pytest.approx(250)

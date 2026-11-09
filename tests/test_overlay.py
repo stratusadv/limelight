@@ -6,13 +6,15 @@ from typing import TYPE_CHECKING, cast
 
 from typing_extensions import override
 
+from playwright.sync_api import Error as PlaywrightError
+
 from limelight.capture.camera import Camera
 from limelight.config import DemoConfig
-from limelight.overlay import Overlay
 from limelight.overlay.assets import OVERLAY_CSS, OVERLAY_JAVASCRIPT
 from limelight.overlay.bridge import Bridge
 from limelight.overlay.cursor import BOX_POLL_MS, Cursor
 from limelight.overlay.keyboard import Keyboard
+from limelight.overlay.overlay import Overlay
 from limelight.overlay.playback import Playback
 from limelight.theme import Theme
 
@@ -73,8 +75,15 @@ def overlay_build(
     )
 
 
+def is_control_toggle(expression: str) -> bool:
+    if 'controlHide(' in expression:
+        return True
+
+    return 'controlShow(' in expression
+
+
 def test_javascript_asset_installs_namespace() -> None:
-    assert 'window.__limelight' in OVERLAY_JAVASCRIPT
+    assert '__limelight' in OVERLAY_JAVASCRIPT
 
 
 def test_narrate_installs_a_missing_overlay_then_draws_caption() -> None:
@@ -102,11 +111,13 @@ def test_narrate_installs_a_missing_overlay_then_draws_caption() -> None:
         if 'window.__limelight.caption(' in expression
     ]
 
-    assert caption_arguments == [{
-        'title': 'Welcome',
-        'body': 'The tour begins.',
-        'step': 'Intro',
-    }]
+    assert caption_arguments == [
+        {
+            'title': 'Welcome',
+            'body': 'The tour begins.',
+            'step': 'Intro',
+        }
+    ]
     assert page.waits_ms == [1000]
 
 
@@ -114,7 +125,7 @@ def test_narrate_ms_override_wins() -> None:
     page = FakePage()
     overlay = overlay_build(page)
 
-    overlay.narrate('Welcome', ms=250)
+    overlay.narrate('Welcome', hold_ms=250)
 
     assert page.waits_ms == [250]
 
@@ -268,9 +279,7 @@ def test_click_hides_the_control_bar_while_it_covers_the_point() -> None:
     overlay.click(locator.as_locator())
 
     control_expressions = [
-        expression
-        for expression, _ in page.evaluations
-        if 'controlHide(' in expression or 'controlShow(' in expression
+        expression for expression, _ in page.evaluations if is_control_toggle(expression)
     ]
 
     assert len(control_expressions) == 2
@@ -290,12 +299,32 @@ def test_click_leaves_the_control_bar_alone_when_it_is_clear_of_the_point() -> N
     overlay.click(locator.as_locator())
 
     control_expressions = [
-        expression
-        for expression, _ in page.evaluations
-        if 'controlHide(' in expression or 'controlShow(' in expression
+        expression for expression, _ in page.evaluations if is_control_toggle(expression)
     ]
 
     assert control_expressions == []
+
+
+class DetachedLocator(FakeLocator):
+    @override
+    def scroll_into_view_if_needed(self, timeout: int) -> None:
+        super().scroll_into_view_if_needed(timeout)
+
+        message = 'Locator.scroll_into_view_if_needed: Element is not attached to the DOM'
+        raise PlaywrightError(message)
+
+
+def test_a_scroll_that_loses_its_element_lets_the_step_carry_on() -> None:
+    page = FakePage()
+    overlay = overlay_build(page)
+    locator = DetachedLocator(boxes=[page.locator_box])
+
+    overlay.spotlight(locator.as_locator())
+
+    expressions = [expression for expression, _ in page.evaluations]
+
+    assert locator.scroll_timeouts == [4000]
+    assert any('window.__limelight.spot(' in expression for expression in expressions)
 
 
 def test_click_scrolls_target_into_view_first() -> None:
@@ -634,13 +663,6 @@ def test_control_bar_is_fixed_and_anchored_to_the_window_edge() -> None:
     assert 'pointer-events: none;' in block
     assert 'vw' not in block
     assert 'opacity' not in block
-    assert 'controlAnchor(bar)' in OVERLAY_JAVASCRIPT
-    assert 'new ResizeObserver(() => controlAnchor(bar))' in OVERLAY_JAVASCRIPT
-
-
-def test_control_buttons_act_on_press_not_click() -> None:
-    assert "addEventListener('pointerdown', () => handler())" in OVERLAY_JAVASCRIPT
-    assert 'event.detail > 0' in OVERLAY_JAVASCRIPT
 
 
 def test_calls_are_guarded_against_an_uninstalled_overlay() -> None:
@@ -662,14 +684,10 @@ def test_title_hides_then_removes() -> None:
     expressions = [expression for expression, _ in page.evaluations]
 
     hide_index = next(
-        index
-        for index, text in enumerate(expressions)
-        if 'window.__limelight.titleHide(' in text
+        index for index, text in enumerate(expressions) if 'window.__limelight.titleHide(' in text
     )
     remove_index = next(
-        index
-        for index, text in enumerate(expressions)
-        if 'window.__limelight.titleRemove(' in text
+        index for index, text in enumerate(expressions) if 'window.__limelight.titleRemove(' in text
     )
 
     assert hide_index < remove_index

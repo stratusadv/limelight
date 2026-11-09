@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from limelight.artifacts import CHAPTERS_FILE_NAME
-from limelight.export import TextExport
 from limelight.transcript import EventName, event_offset_ms, event_text
+from limelight.export.export import TextExport
 
 if TYPE_CHECKING:
     from limelight.transcript import Event
@@ -13,15 +13,15 @@ if TYPE_CHECKING:
 CHAPTER_EVENTS = (EventName.TITLE,)
 
 
-def _timestamp_chapter(ms: int) -> str:
+def _timestamp_chapter(offset_ms: int) -> str:
     """
     A function that formats an offset as a chapter timestamp.
 
-    :param ms: The milliseconds since the run started.
+    :param offset_ms: The milliseconds since the run started.
     :return: The offset as minutes and seconds.
     """
 
-    minutes, seconds = divmod(ms // 1000, 60)
+    minutes, seconds = divmod(offset_ms // 1000, 60)
 
     return f'{minutes:02d}:{seconds:02d}'
 

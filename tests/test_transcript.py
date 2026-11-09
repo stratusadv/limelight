@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from limelight.transcript import (
     EventName,
     Transcript,
+    cue_text,
     event_offset_ms,
     transcript_load,
     transcript_path_resolve,
@@ -85,6 +86,16 @@ def test_load_returns_the_recorded_events(tmp_path: Path) -> None:
     assert transcript_load(path) == transcript.events
 
 
+def test_load_reads_the_transcript_inside_a_directory(tmp_path: Path) -> None:
+    transcript = Transcript(tmp_path / 'transcript.json')
+
+    detail = {'title': 'Welcome'}
+
+    transcript.record(EventName.NARRATE, detail)
+
+    assert transcript_load(tmp_path) == transcript.events
+
+
 def test_load_rejects_missing_events(tmp_path: Path) -> None:
     path = tmp_path / 'transcript.json'
     path.write_text('{"nope": 1}', encoding='utf-8')
@@ -109,3 +120,9 @@ def test_path_resolve_enters_a_directory(tmp_path: Path) -> None:
 def test_an_event_without_an_offset_reads_as_zero() -> None:
     assert event_offset_ms({'event': 'narrate'}) == 0
     assert event_offset_ms({'event': 'narrate', 'offset_ms': 'soon'}) == 0
+
+
+def test_cue_text_joins_title_subtitle_and_body() -> None:
+    event = {'title': 'Open the order', 'subtitle': '', 'body': 'Navigate to it.', 'kicker': 'One'}
+
+    assert cue_text(event) == 'Open the order Navigate to it.'

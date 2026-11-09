@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from playwright.sync_api import Error as PlaywrightError
 
+from limelight.errors import OverlayError
 from limelight.overlay.assets import OVERLAY_CSS, OVERLAY_JAVASCRIPT
 from limelight.theme import Theme
 
@@ -26,8 +27,8 @@ class Bridge:
     """
     A channel between the demo and the overlay running inside the page.
 
-    This class installs the overlay on every document the page loads and forwards
-    calls into it, reinstalling when a navigation has torn it down.
+    This class installs the overlay on each document the page loads, forwards calls
+    into it, and reinstalls it when a navigation has torn it down.
     """
 
     def __init__(self, page: Page, config: DemoConfig, theme: Theme | None = None) -> None:
@@ -65,7 +66,7 @@ class Bridge:
         :param expression: The JavaScript expression to evaluate.
         :param argument: The value passed to the expression.
         :return: The result of the expression.
-        :raises RuntimeError: If every attempt is lost to a navigation.
+        :raises OverlayError: If each attempt is lost to a navigation.
         """
 
         for _ in range(EVALUATE_ATTEMPT_COUNT):
@@ -84,7 +85,7 @@ class Bridge:
                 )
 
         message = f'the page navigated away on {EVALUATE_ATTEMPT_COUNT} consecutive evaluations'
-        raise RuntimeError(message)
+        raise OverlayError(message)
 
     @property
     def page(self) -> Page:
@@ -107,7 +108,7 @@ class Bridge:
         :param function_name: The name of the function on the overlay API.
         :param argument: The value passed to the function.
         :return: The result of the function, or None if it returned nothing.
-        :raises RuntimeError: If the overlay is still unreachable after a reinstall.
+        :raises OverlayError: If the overlay is still unreachable after a reinstall.
         """
 
         expression = (
@@ -125,7 +126,7 @@ class Bridge:
 
         if outcome is None:
             message = f'window.__limelight.{function_name} is unreachable after install'
-            raise RuntimeError(message)
+            raise OverlayError(message)
 
         if isinstance(outcome, Mapping):
             return outcome.get('result')
@@ -166,7 +167,7 @@ class Bridge:
         state = self.call(function_name)
 
         if isinstance(state, Mapping):
-            return state
+            return {str(key): value for key, value in state.items()}
 
         return None
 

@@ -5,11 +5,14 @@ import pytest
 from types import SimpleNamespace
 from typing_extensions import override
 
+from limelight import Scene
 from limelight.config import DemoConfig
 from limelight.demo import Demo
-from limelight.scene import Scene
 
 from fakes import FakeApplication, FakeLocator, FakeNarrator, FakePage
+
+
+pytestmark = pytest.mark.usefixtures('_expect_stubbed')
 
 
 class DashboardScene(Scene):
@@ -90,7 +93,9 @@ def actor_build() -> tuple[PlainScene, FakeNarrator, FakePage]:
 
 
 def expect_stub(locator: object) -> SimpleNamespace:
-    return SimpleNamespace(to_be_visible=lambda timeout: None)
+    _ = locator
+
+    return SimpleNamespace(to_be_visible=lambda **_: None)
 
 
 def test_an_action_holds_after_it_lands() -> None:
@@ -177,6 +182,6 @@ def test_a_teach_click_reveals_then_clicks() -> None:
     assert kinds == ['narrate', 'spotlight', 'click', 'pause']
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def _expect_stubbed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr('limelight.demo.expect', expect_stub)

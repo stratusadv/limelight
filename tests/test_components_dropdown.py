@@ -15,6 +15,9 @@ if TYPE_CHECKING:
     from limelight.demo import Demo
 
 
+pytestmark = pytest.mark.usefixtures('_expect_stubbed')
+
+
 class RowMenu(Dropdown):
     item_selector = '.dropdown-item'
     menu_selector = '.dropdown-menu'
@@ -62,17 +65,23 @@ class FakeDemo:
         self.clicks.append(locator)
 
     def pause(self, ms: int | None = None) -> None:
+        _ = ms
+
         self.pause_count += 1
 
     def spotlight(self, locator: object, *, label: str = '') -> None:
+        _ = locator
+
         self.spotlights.append(label)
 
 
 def expect_stub(locator: object) -> SimpleNamespace:
-    return SimpleNamespace(to_be_visible=lambda timeout: None)
+    _ = locator
+
+    return SimpleNamespace(to_be_visible=lambda **_: None)
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def _expect_stubbed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr('limelight.components.dropdown.expect', expect_stub)
 

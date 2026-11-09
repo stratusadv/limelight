@@ -1,0 +1,1526 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>limelight</title>
+    <meta name="description" content="limelight is a narration layer for Playwright that turns end-to-end tests into demos.">
+    <link rel="icon" href="assets/limelight-icon-on-dark-32.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" id="fonts" href="https://fonts.googleapis.com/css2?family=Fragment+Mono&family=Manrope:wght@400;500;600;800&display=swap">
+    <script>document.documentElement.classList.add('loading');</script>
+    <style>
+        :root {
+            --page: #f2f6f3;
+            --ink: #0a0e11;
+            --soft: #3c4c4f;
+            --muted: #586b6c;
+            --line: rgba(10, 14, 17, 0.14);
+            --lime: #a9ff96;
+            --wash: #80cf9c;
+            --slate: #728c8d;
+            --stage: #0a0e11;
+            --gutter: clamp(20px, 3.4vw, 48px);
+            color-scheme: light;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --page: #0a0e11;
+                --ink: #eff4f1;
+                --soft: #aebcbb;
+                --muted: #8a9c9c;
+                --line: rgba(169, 255, 150, 0.14);
+                color-scheme: dark;
+            }
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html {
+            background: var(--stage);
+            scroll-behavior: smooth;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            margin: 0;
+            background: var(--page);
+            color: var(--ink);
+            font: 17px/1.6 "Manrope", system-ui, sans-serif;
+            text-rendering: geometricPrecision;
+        }
+
+        html.loading body {
+            opacity: 0;
+        }
+
+        ::selection {
+            background: var(--lime);
+            color: var(--stage);
+        }
+
+        a {
+            color: inherit;
+            text-underline-offset: 4px;
+        }
+
+        :focus-visible {
+            outline: 2px solid currentColor;
+            outline-offset: 3px;
+        }
+
+        code,
+        .mono {
+            font-family: "Fragment Mono", ui-monospace, monospace;
+        }
+
+        code {
+            font-size: 0.86em;
+        }
+
+        h1,
+        h2 {
+            margin: 0;
+            font-weight: 600;
+            text-wrap: balance;
+        }
+
+        h2 {
+            font-size: clamp(2.5rem, 5.2vw, 4.75rem);
+            letter-spacing: -0.04em;
+            line-height: 1.04;
+        }
+
+        .stage {
+            position: relative;
+            display: flex;
+            overflow: hidden;
+            min-height: 100svh;
+            background: var(--stage);
+            color: var(--lime);
+            container-type: inline-size;
+            isolation: isolate;
+        }
+
+        .beam {
+            position: absolute;
+            inset: 0;
+            background: rgba(169, 255, 150, 0.07);
+        }
+
+        .disc {
+            --size: clamp(240px, min(44cqw, 74svh), 1100px);
+            position: absolute;
+            bottom: calc(var(--gutter) + 2.6cqw);
+            left: max(65%, calc(640px + var(--size) / 2));
+            width: var(--size);
+            height: var(--size);
+            margin-left: calc(var(--size) / -2);
+            border-radius: 50%;
+            background: var(--lime);
+            will-change: transform;
+        }
+
+        .scene {
+            position: relative;
+            display: flex;
+            width: 100%;
+            flex-direction: column;
+            padding: 0 var(--gutter) var(--gutter);
+            mix-blend-mode: difference;
+        }
+
+        .nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 24px 0 0;
+        }
+
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .mark {
+            display: block;
+        }
+
+        .mark svg {
+            display: block;
+            width: auto;
+            height: 28px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: clamp(18px, 2.4vw, 32px);
+            color: var(--wash);
+            font-size: 1rem;
+            font-weight: 500;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+        }
+
+        .nav-links a:hover {
+            color: var(--lime);
+            text-decoration: underline;
+        }
+
+        .pitch {
+            padding: clamp(24px, 5svh, 88px) 0 clamp(24px, 4svh, 64px);
+        }
+
+        h1 {
+            font-size: clamp(2.75rem, min(5.6cqw, 9svh), 7.5rem);
+            letter-spacing: -0.045em;
+            line-height: 1.02;
+        }
+
+        .tagline {
+            max-width: 33em;
+            margin: clamp(14px, 2.6svh, 24px) 0 clamp(18px, 3.4svh, 32px);
+            color: var(--wash);
+            font-size: clamp(1.0625rem, 1.4cqw, 1.1875rem);
+            line-height: 1.5;
+            text-wrap: pretty;
+        }
+
+        .command {
+            display: inline-flex;
+            align-items: center;
+            gap: 14px;
+            max-width: 100%;
+            padding: 6px 6px 6px 22px;
+            border: 1px solid rgba(169, 255, 150, 0.38);
+            border-radius: 28px;
+        }
+
+        .command code {
+            min-width: 0;
+            font-size: 0.875rem;
+            overflow-wrap: anywhere;
+        }
+
+        .command button {
+            flex: none;
+            height: 36px;
+            padding: 0 16px;
+            border: 0;
+            border-radius: 18px;
+            background: var(--lime);
+            color: var(--stage);
+            cursor: pointer;
+            font: 600 0.875rem/1 "Manrope", system-ui, sans-serif;
+        }
+
+        .command button:hover {
+            background: var(--wash);
+        }
+
+        .version {
+            color: var(--slate);
+            font-size: 0.8125rem;
+        }
+
+        .wordmark {
+            display: block;
+            width: 100%;
+            height: auto;
+            margin-top: auto;
+        }
+
+        .band {
+            padding: clamp(96px, 12vw, 184px) var(--gutter) 0;
+        }
+
+        .act {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            min-height: 100svh;
+            padding: clamp(72px, 10svh, 128px) var(--gutter);
+        }
+
+        .act + .band {
+            padding-top: clamp(24px, 6vw, 96px);
+        }
+
+        .lede p {
+            max-width: 46rem;
+            margin: clamp(16px, 2.4svh, 28px) 0 0;
+            font-size: clamp(1.125rem, 1.6vw, 1.375rem);
+            line-height: 1.5;
+            text-wrap: pretty;
+        }
+
+        .lede code {
+            white-space: nowrap;
+        }
+
+        .rehearsal {
+            display: grid;
+            grid-template-columns: minmax(0, 3.4fr) repeat(2, minmax(0, 4.3fr));
+            grid-template-rows: auto auto auto;
+            gap: 12px clamp(20px, 2.6vw, 40px);
+            margin: clamp(40px, 6svh, 72px) 0 0;
+        }
+
+        .cues {
+            display: grid;
+            grid-row: 2;
+            align-self: center;
+            justify-items: start;
+            gap: 2px;
+        }
+
+        .cues button {
+            margin-left: -12px;
+            padding: 6px 12px;
+            border: 0;
+            border-radius: 8px;
+            background: none;
+            color: var(--soft);
+            cursor: pointer;
+            font: inherit;
+            text-align: left;
+        }
+
+        .cues button:hover {
+            color: var(--ink);
+        }
+
+        .cues button[aria-current="step"] {
+            background: var(--lime);
+            color: var(--stage);
+        }
+
+        .cues code {
+            font-size: clamp(0.8125rem, 1.05vw, 1rem);
+            white-space: nowrap;
+        }
+
+        .cues .pause {
+            margin: 18px 0 0;
+            padding: 6px 16px;
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            color: var(--ink);
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+
+        .run {
+            display: grid;
+            grid-row: 1 / span 3;
+            grid-template-rows: subgrid;
+        }
+
+        .run > p {
+            margin: 0;
+        }
+
+        .run strong {
+            display: block;
+            font-size: 1.25rem;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            line-height: 1.4;
+        }
+
+        .run > p code {
+            font-size: 0.8125rem;
+        }
+
+        .passed {
+            visibility: hidden;
+            color: var(--soft);
+        }
+
+        .window {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            aspect-ratio: 16 / 10;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            background: #141a1f;
+            color: #eef2f1;
+            container-type: inline-size;
+        }
+
+        .chrome {
+            display: flex;
+            flex: none;
+            align-items: center;
+            gap: 1.4cqw;
+            height: 8cqw;
+            padding: 0 3cqw;
+            background: #1e262c;
+            color: #8a9a9e;
+            font-size: 2.4cqw;
+        }
+
+        .chrome i {
+            width: 1.8cqw;
+            height: 1.8cqw;
+            border-radius: 50%;
+            background: #3a464d;
+        }
+
+        .chrome span {
+            margin-left: 2cqw;
+            padding: 0.8cqw 2.4cqw;
+            border-radius: 99px;
+            background: #141a1f;
+        }
+
+        .viewport {
+            position: relative;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .order {
+            display: grid;
+            justify-items: start;
+            gap: 1cqw;
+            padding: 5cqw 6cqw;
+            font-size: 3.2cqw;
+            line-height: 1.4;
+        }
+
+        .order small {
+            color: #7d8c90;
+            font-size: 2.6cqw;
+        }
+
+        .order b {
+            display: flex;
+            align-items: center;
+            gap: 2cqw;
+            margin-bottom: 1.4cqw;
+            font-size: 5.4cqw;
+            letter-spacing: -0.02em;
+        }
+
+        .order span {
+            color: #a9b5b8;
+        }
+
+        .status {
+            padding: 0.4cqw 1.8cqw;
+            border-radius: 99px;
+            background: #252e35;
+            color: #a9b5b8;
+            font-size: 2.4cqw;
+            font-style: normal;
+            font-weight: 600;
+            letter-spacing: 0;
+        }
+
+        .status::after {
+            content: "Draft";
+        }
+
+        .approve {
+            position: absolute;
+            right: 6cqw;
+            bottom: 6cqw;
+            display: grid;
+            place-items: center;
+            width: 24cqw;
+            height: 7.6cqw;
+            border-radius: 1.6cqw;
+            background: #eef2f1;
+            color: #141a1f;
+            font-size: 3cqw;
+            font-style: normal;
+            font-weight: 600;
+        }
+
+        .approve::after {
+            content: "Approve";
+        }
+
+        .rehearsal[data-state="glide"] .silent .status,
+        .rehearsal[data-state="approved"] .status {
+            background: rgba(111, 214, 181, 0.16);
+            color: #6fd6b5;
+        }
+
+        .rehearsal[data-state="glide"] .silent .approve,
+        .rehearsal[data-state="approved"] .approve {
+            background: #252e35;
+            color: #a9b5b8;
+        }
+
+        .rehearsal[data-state="glide"] .silent :is(.status, .approve)::after,
+        .rehearsal[data-state="approved"] :is(.status, .approve)::after {
+            content: "Approved";
+        }
+
+        .dim,
+        .title-card,
+        .caption,
+        .spot,
+        .cursor {
+            position: absolute;
+            opacity: 0;
+            transition: opacity 400ms ease;
+        }
+
+        .dim {
+            inset: 0;
+            background: rgba(8, 11, 18, 0.64);
+        }
+
+        .title-card {
+            inset: 0;
+            display: grid;
+            place-content: center;
+            background: var(--stage);
+            color: #ffffff;
+            font-size: 7cqw;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+        }
+
+        .caption {
+            top: 50%;
+            left: 50%;
+            padding: 3cqw 4.6cqw;
+            border: 1px solid rgba(244, 246, 251, 0.12);
+            border-left: 1.2cqw solid var(--lime);
+            border-radius: 2.6cqw;
+            background: rgba(15, 18, 26, 0.95);
+            color: #f4f6fb;
+            font-size: 4.4cqw;
+            font-weight: 700;
+            translate: -50% -50%;
+            white-space: nowrap;
+        }
+
+        .spot {
+            right: 5cqw;
+            bottom: 5cqw;
+            width: 26cqw;
+            height: 9.6cqw;
+            border: 0.6cqw solid var(--lime);
+            border-radius: 2.4cqw;
+            box-shadow: 0 0 0 100cqw rgba(8, 11, 18, 0.64);
+        }
+
+        .cursor {
+            top: 34%;
+            left: 44%;
+            width: 3.4cqw;
+            height: 3.4cqw;
+            border: 0.45cqw solid rgba(8, 11, 18, 0.85);
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.92);
+            translate: -50% -50%;
+            transition: opacity 250ms ease, top 800ms ease-in-out, left 800ms ease-in-out;
+        }
+
+        .rehearsal[data-state="title"] .title-card,
+        .rehearsal[data-state="caption"] :is(.dim, .caption),
+        .rehearsal[data-state="spot"] .spot,
+        .rehearsal:is([data-state="glide"], [data-state="approved"]) .cursor {
+            opacity: 1;
+        }
+
+        .rehearsal:is([data-state="glide"], [data-state="approved"]) .cursor {
+            top: calc(100% - 9.8cqw);
+            left: calc(100% - 9cqw);
+        }
+
+        .rehearsal[data-state="approved"] .cursor::after {
+            content: "";
+            position: absolute;
+            inset: -1cqw;
+            border: 0.6cqw solid var(--lime);
+            border-radius: 50%;
+            animation: pulse 400ms ease-out both;
+        }
+
+        .rehearsal[data-state="approved"] .passed {
+            visibility: visible;
+        }
+
+        .render {
+            background: var(--stage);
+            color: var(--lime);
+        }
+
+        .render .lede p {
+            color: var(--wash);
+        }
+
+        .exposure {
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr);
+            gap: clamp(28px, 4svh, 44px) clamp(24px, 4vw, 64px);
+            margin: clamp(48px, 7svh, 88px) 0 0;
+        }
+
+        .take {
+            --dot: clamp(8px, 0.9vw, 13px);
+            display: grid;
+            grid-column: 1 / -1;
+            grid-template-columns: subgrid;
+            align-items: center;
+            color: var(--slate);
+        }
+
+        .take.lit {
+            color: var(--lime);
+        }
+
+        .take p {
+            margin: 0;
+            color: var(--wash);
+            font-size: 1.25rem;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+        }
+
+        .take.lit p {
+            color: var(--lime);
+        }
+
+        .strobe {
+            display: grid;
+            grid-auto-columns: minmax(0, 1fr);
+            grid-auto-flow: column;
+            place-items: center;
+            height: calc(var(--dot) * 4);
+        }
+
+        .strobe i {
+            width: var(--dot);
+            height: var(--dot);
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        .strobe .missed {
+            border: 1.5px solid currentColor;
+            background: none;
+        }
+
+        .exposure figcaption {
+            grid-column: 2;
+            color: var(--slate);
+            font-size: 0.875rem;
+        }
+
+        .folder {
+            display: grid;
+            grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
+            column-gap: clamp(24px, 4vw, 64px);
+            align-content: center;
+        }
+
+        .files {
+            margin: 0;
+            border-top: 1px solid var(--line);
+        }
+
+        .files div {
+            display: grid;
+            grid-template-columns: minmax(0, 3fr) minmax(0, 9fr);
+            column-gap: 20px;
+            align-items: baseline;
+            padding: 14px 0;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .files dt {
+            justify-self: start;
+            padding: 1px 10px;
+            border-radius: 6px;
+            background: var(--lime);
+            color: var(--stage);
+            font-size: 0.9375rem;
+        }
+
+        .files dd {
+            margin: 0;
+            color: var(--soft);
+        }
+
+        .facts {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: clamp(36px, 4.4vw, 64px) clamp(24px, 4vw, 64px);
+            margin: clamp(40px, 5vw, 72px) 0 0;
+        }
+
+        .facts dt {
+            font-size: 1.25rem;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+        }
+
+        .facts dd {
+            margin: 6px 0 0;
+            color: var(--soft);
+            text-wrap: pretty;
+        }
+
+        .house {
+            margin-top: clamp(72px, 8vw, 120px);
+            background: var(--stage);
+        }
+
+        .finale {
+            padding: clamp(112px, 15vw, 216px) var(--gutter) 32px;
+            background: var(--lime);
+            color: var(--stage);
+            container-type: inline-size;
+        }
+
+        .finale h2 {
+            font-size: clamp(2.75rem, 7.4cqw, 7.5rem);
+            letter-spacing: -0.05em;
+            line-height: 1;
+            scroll-margin-top: clamp(32px, 8svh, 96px);
+        }
+
+        .finale .command {
+            display: flex;
+            margin: clamp(40px, 5cqw, 72px) 0 0;
+            padding: 18px 18px 18px clamp(20px, 2.4cqw, 32px);
+            border: 0;
+            border-radius: 16px;
+            background: var(--stage);
+            color: var(--lime);
+        }
+
+        .finale .command code {
+            flex: 1;
+            font-size: clamp(0.875rem, 2.42cqw, 2.25rem);
+            letter-spacing: -0.02em;
+        }
+
+        .steps {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 32px clamp(24px, 4cqw, 64px);
+            margin: clamp(40px, 5cqw, 72px) 0 0;
+            padding: 0;
+            counter-reset: step;
+            list-style: none;
+        }
+
+        .steps li {
+            display: grid;
+            grid-template-columns: 30px minmax(0, 1fr);
+            align-content: start;
+            counter-increment: step;
+        }
+
+        .steps li::before {
+            content: counter(step);
+            font-size: 1.25rem;
+            font-weight: 600;
+            line-height: 1.6;
+        }
+
+        .steps strong {
+            display: block;
+            font-size: 1.25rem;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            line-height: 1.6;
+        }
+
+        .steps p,
+        .needs {
+            margin: 6px 0 0;
+            text-wrap: pretty;
+        }
+
+        .steps p {
+            grid-column: 2;
+            overflow-wrap: anywhere;
+        }
+
+        .needs {
+            margin-top: clamp(40px, 5cqw, 72px);
+        }
+
+        footer {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px 32px;
+            margin-top: clamp(64px, 8cqw, 112px);
+            font-size: 0.875rem;
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 24px;
+        }
+
+        .stratus {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+        }
+
+        .stratus svg {
+            width: 28px;
+            height: auto;
+            transition: opacity 200ms ease;
+        }
+
+        .stratus:hover svg,
+        .stratus:focus-visible svg {
+            opacity: 0.75;
+        }
+
+        @keyframes open {
+            from {
+                clip-path: circle(10svh at 65% 50svh);
+            }
+
+            74% {
+                clip-path: circle(50svh at 65% 50svh);
+            }
+
+            to {
+                clip-path: circle(150% at 65% 50svh);
+            }
+        }
+
+        @keyframes pulse {
+            from {
+                opacity: 1;
+                scale: 0.5;
+            }
+
+            to {
+                opacity: 0;
+                scale: 2.4;
+            }
+        }
+
+        @supports (animation-timeline: view()) {
+            @media (prefers-reduced-motion: no-preference) {
+                .finale {
+                    padding-top: 75svh;
+                    animation: open linear both;
+                    animation-range: cover 0 cover 135svh;
+                    animation-timeline: view();
+                }
+            }
+        }
+
+        @media (max-width: 1100px) {
+            .disc {
+                --size: clamp(240px, min(72cqw, 38svh), 640px);
+                left: 62%;
+            }
+
+            .rehearsal {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .cues {
+                grid-column: 1 / -1;
+                grid-row: 1;
+                margin-bottom: 20px;
+            }
+
+            .run {
+                grid-row: 2 / span 3;
+            }
+
+            .exposure,
+            .folder {
+                grid-template-columns: minmax(0, 1fr);
+            }
+
+            .take {
+                row-gap: 12px;
+            }
+
+            .exposure figcaption {
+                grid-column: auto;
+            }
+
+            .folder {
+                row-gap: 40px;
+            }
+
+            .facts {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .steps {
+                grid-template-columns: minmax(0, 1fr);
+            }
+        }
+
+        @media (max-width: 640px) {
+            .rehearsal {
+                grid-template-columns: minmax(0, 1fr);
+                row-gap: 32px;
+            }
+
+            .run {
+                grid-row: auto;
+                grid-template-rows: none;
+                row-gap: 12px;
+            }
+        }
+
+        @media (max-width: 560px) {
+            .files div {
+                grid-template-columns: minmax(0, 1fr);
+                row-gap: 6px;
+            }
+
+            .command {
+                position: relative;
+                padding: 14px 18px;
+                border-radius: 22px;
+            }
+
+            .command code {
+                font-size: 0.8125rem;
+                line-height: 1.9;
+            }
+
+            .command code span {
+                display: inline-block;
+            }
+
+            .command button {
+                position: absolute;
+                top: 6px;
+                right: 6px;
+                height: 32px;
+                padding: 0 14px;
+            }
+
+            .facts {
+                grid-template-columns: minmax(0, 1fr);
+            }
+
+            .finale .command code {
+                font-size: 0.8125rem;
+            }
+
+            .finale .command {
+                padding: 14px 18px;
+            }
+        }
+
+        @media (max-width: 360px) {
+            .version {
+                display: none;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            html {
+                scroll-behavior: auto;
+            }
+
+            .stratus svg,
+            .window * {
+                transition: none;
+            }
+
+            .cursor::after {
+                display: none;
+            }
+        }
+
+        @media (forced-colors: active) {
+            .beam,
+            .disc {
+                display: none;
+            }
+
+            .scene {
+                mix-blend-mode: normal;
+            }
+
+            .strobe i {
+                background: CanvasText;
+                forced-color-adjust: none;
+            }
+
+            .strobe .missed {
+                border-color: CanvasText;
+                background: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="stage" id="stage">
+        <div class="beam" id="beam" aria-hidden="true"></div>
+        <div class="disc" id="disc" aria-hidden="true"></div>
+
+        <div class="scene">
+            <nav class="nav" aria-label="Main">
+                <div class="nav-brand">
+                    <a class="mark" href="#" aria-label="limelight">
+                        <svg viewBox="0 0 193.83 223.52" fill="currentColor" aria-hidden="true">
+                            <path d="M1.6 12.15C3.85 6.89 8.24 2.84 13.67 1.03C19.1 -0.78 25.04 -0.18 30 2.68L181.28 90.02C187.83 93.8 192.32 100.33 193.52 107.8C194.71 115.26 192.48 122.87 187.43 128.5ZM0 28.85L132.43 111.76L0 194.67ZM1.6 211.36C3.85 216.63 8.24 220.68 13.67 222.49C19.1 224.3 25.04 223.7 30 220.84L173.93 137.74L146.56 120.61Z"/>
+                        </svg>
+                    </a>
+                    <span class="version mono" id="version"></span>
+                </div>
+
+                <div class="nav-links">
+                    <a href="#install">Install</a>
+                    <a href="overview/">Docs</a>
+                    <a href="https://pypi.org/project/playwright-limelight/">PyPI</a>
+                    <a href="https://github.com/stratusadv/limelight">GitHub</a>
+                </div>
+            </nav>
+
+            <div class="pitch">
+                <h1>Write the test.<br>Get the demo.</h1>
+
+                <p class="tagline">A narration layer for Playwright. The test that checks a flow in your suite also walks a viewer through it, with caption cards, spotlights, and a drawn cursor.</p>
+
+                <div class="command">
+                    <code>pip install <span>"playwright-limelight[django,pytest]"</span></code>
+                    <button type="button" data-copy>Copy</button>
+                </div>
+            </div>
+
+            <svg class="wordmark" id="wordmark" viewBox="0 0 404.08 107.92" role="img" aria-label="limelight">
+                <defs>
+                    <radialGradient id="spill" gradientUnits="userSpaceOnUse" cx="210" cy="43" r="268">
+                        <stop offset="0.38" stop-color="#a9ff96"/>
+                        <stop offset="0.66" stop-color="#80cf9c"/>
+                        <stop offset="1" stop-color="#728c8d"/>
+                    </radialGradient>
+                </defs>
+
+                <path fill="url(#spill)" d="M0 82.88L14.16 82.88L14.16 0L0 0ZM40.33 12.16C40.33 17.13 36.29 21.17 31.32 21.17C26.35 21.17 22.31 17.13 22.31 12.16C22.31 7.19 26.35 3.15 31.32 3.15C36.29 3.15 40.33 7.19 40.33 12.16ZM24.24 82.88L38.4 82.88L38.4 28L24.24 28L24.24 82.88ZM48.48 82.88L62.64 82.88L62.64 51.68C62.64 43.52 67.52 39.2 73.04 39.2C78.8 39.2 82.24 43.12 82.24 50.08L82.24 82.88L96.4 82.88L96.4 51.68C96.4 43.52 101.04 39.2 106.8 39.2C112.64 39.2 116 42.8 116 49.52L116 82.88L130.16 82.88L130.16 47.52C130.16 33.52 122.16 26.08 110.64 26.08C103.04 26.08 96.32 29.76 92.88 35.04C90 29.28 84.16 26.08 77.36 26.08C70.64 26.08 65.52 29.04 62.64 33.92L62.64 28L48.48 28L48.48 82.88ZM164.8 84.08C175.36 84.08 184.72 79.52 189.2 71.52L178.64 64.72C176.08 68.48 171.2 71.04 165.28 71.04C157.44 71.04 151.76 66.16 150.88 59.28L191.2 59.28C191.36 57.52 191.36 55.68 191.36 54.24C191.36 36.8 179.52 26.08 164.4 26.08C148.32 26.08 136.24 38.24 136.24 54.72C136.24 71.92 148.64 84.08 164.8 84.08ZM151.04 49.12C152.16 42.88 157.68 38.24 164.24 38.24C170.96 38.24 176.4 42.48 177.2 49.12L151.04 49.12ZM199.36 82.88L213.52 82.88L213.52 0L199.36 0L199.36 82.88ZM239.69 12.16C239.69 17.13 235.65 21.17 230.68 21.17C225.71 21.17 221.67 17.13 221.67 12.16C221.67 7.19 225.71 3.15 230.68 3.15C235.65 3.15 239.69 7.19 239.69 12.16ZM223.6 82.88L237.76 82.88L237.76 28L223.6 28L223.6 82.88ZM273.52 107.92C291.04 107.92 302.64 96.64 302.64 78.72L302.64 28L288.48 28L288.48 33.36C284.72 28.88 278.8 26.08 271.92 26.08C257.28 26.08 245.28 38.32 245.28 54.48C245.28 70.88 257.36 83.44 272.16 83.44C279.04 83.44 285.12 80.48 288.48 75.76L288.48 79.68C288.48 89.2 282.64 94.64 273.44 94.64C266.08 94.64 259.6 90.96 256.32 86.48L246.64 95.84C252.4 103.36 262.88 107.92 273.52 107.92ZM274.4 69.92C265.92 69.92 260.8 62.88 260.8 54.64C260.8 45.76 267.04 39.04 274.4 39.04C283.12 39.04 288.48 45.44 288.48 54.24C288.48 63.44 282.56 69.92 274.4 69.92ZM312.88 82.88L327.04 82.88L327.04 52.32C327.04 43.84 332.4 38.96 338.56 38.96C345.2 38.96 349.36 42.96 349.36 50.72L349.36 82.88L363.52 82.88L363.52 48.32C363.52 34 354.72 26.08 342.64 26.08C335.76 26.08 329.84 28.96 327.04 33.92L327.04 0L312.88 0L312.88 82.88ZM394.72 83.84C398.16 83.84 401.68 83.36 404.08 82.64L404.08 69.36C402.4 69.92 400 70.24 398.16 70.24C392.88 70.24 390.96 67.6 390.96 62.96L390.96 39.36L404.08 39.36L404.08 27.68L390.96 27.68L390.96 12.16L376.8 12.16L376.8 27.68L367.76 27.68L367.76 39.36L376.8 39.36L376.8 64.24C376.8 76.88 384.4 83.84 394.72 83.84Z"/>
+            </svg>
+        </div>
+    </header>
+
+    <main>
+        <section class="act">
+            <div class="lede">
+                <h2>One test, two runs</h2>
+
+                <p>A plain pytest run skips the narration and checks the flow. Set <code>DEMO_MODE=narrate</code> and the same test plays as a demo.</p>
+            </div>
+
+            <figure class="rehearsal" id="rehearsal" data-state="page" aria-label="The same four lines run twice. The silent run approves the order and draws nothing. The narrated run shows a title card, a caption, and a spotlight, then glides a cursor to the button and clicks it.">
+                <div class="cues">
+                    <button type="button" data-cue="1"><code>demo.title('Order Approval')</code></button>
+                    <button type="button" data-cue="2"><code>demo.narrate('Approve the order')</code></button>
+                    <button type="button" data-cue="3"><code>demo.spotlight(approve)</code></button>
+                    <button type="button" data-cue="4"><code>demo.click(approve)</code></button>
+                    <button class="pause" type="button" id="pause">Pause</button>
+                </div>
+
+                <div class="run silent">
+                    <p><strong>Silent</strong> <code>pytest</code></p>
+
+                    <div class="window" aria-hidden="true">
+                        <div class="chrome"><i></i><i></i><i></i><span>shop.example.com/orders/SHOP-214</span></div>
+
+                        <div class="viewport">
+                            <div class="order">
+                                <small>Orders</small>
+                                <b>Order SHOP-214 <em class="status"></em></b>
+                                <span>Riley Chen</span>
+                                <span>3 items, $1,240.00</span>
+                            </div>
+
+                            <em class="approve"></em>
+                        </div>
+                    </div>
+
+                    <p class="passed"><code>1 passed</code></p>
+                </div>
+
+                <div class="run narrated">
+                    <p><strong>Narrated</strong> <code>DEMO_MODE=narrate pytest --headed</code></p>
+
+                    <div class="window" aria-hidden="true">
+                        <div class="chrome"><i></i><i></i><i></i><span>shop.example.com/orders/SHOP-214</span></div>
+
+                        <div class="viewport">
+                            <div class="order">
+                                <small>Orders</small>
+                                <b>Order SHOP-214 <em class="status"></em></b>
+                                <span>Riley Chen</span>
+                                <span>3 items, $1,240.00</span>
+                            </div>
+
+                            <em class="approve"></em>
+                            <div class="dim"></div>
+                            <div class="caption">Approve the order</div>
+                            <div class="spot"></div>
+                            <div class="cursor"></div>
+                            <div class="title-card">Order Approval</div>
+                        </div>
+                    </div>
+
+                    <p class="passed"><code>1 passed</code></p>
+                </div>
+            </figure>
+        </section>
+
+        <section class="act render">
+            <div class="lede">
+                <h2>Rendered, not recorded</h2>
+
+                <p>A screen recording drops frames when the machine falls behind. A limelight render waits for each frame, so the video is smooth on any machine.</p>
+            </div>
+
+            <figure class="exposure">
+                <div class="take">
+                    <p>Recorded</p>
+
+                    <div class="strobe" data-frames="111111001111111100000111101111" role="img" aria-label="A row of frames with gaps where the recording repeated an earlier frame."></div>
+                </div>
+
+                <div class="take lit">
+                    <p>Rendered</p>
+
+                    <div class="strobe" data-frames="111111111111111111111111111111" role="img" aria-label="A row of evenly spaced frames, one for each step of the cursor."></div>
+                </div>
+
+                <figcaption>Each dot is one frame of a cursor crossing the screen. A hollow dot is a frame the recording repeated.</figcaption>
+            </figure>
+        </section>
+
+        <section class="act folder">
+            <div class="lede">
+                <h2>One run, one folder</h2>
+
+                <p>A narrated run fills one folder per demo, and <code>limelight-render</code> turns it into each format you ship.</p>
+            </div>
+
+            <dl class="files">
+                <div>
+                    <dt class="mono">video.mp4</dt>
+                    <dd>The demo as a video.</dd>
+                </div>
+
+                <div>
+                    <dt class="mono">video.gif</dt>
+                    <dd>A GIF for the README.</dd>
+                </div>
+
+                <div>
+                    <dt class="mono">walkthrough.md</dt>
+                    <dd>The steps written out for the docs.</dd>
+                </div>
+
+                <div>
+                    <dt class="mono">01-orders.png</dt>
+                    <dd>A screenshot of each step you mark.</dd>
+                </div>
+
+                <div>
+                    <dt class="mono">render.mp4</dt>
+                    <dd>The video with subtitles and your voiceover.</dd>
+                </div>
+
+                <div>
+                    <dt class="mono">subtitles.vtt</dt>
+                    <dd>The captions as subtitles.</dd>
+                </div>
+
+                <div>
+                    <dt class="mono">chapters.txt</dt>
+                    <dd>A chapter list from the title cards.</dd>
+                </div>
+
+                <div>
+                    <dt class="mono">transcript.json</dt>
+                    <dd>The timeline the rest is built from.</dd>
+                </div>
+            </dl>
+        </section>
+
+        <section class="band">
+            <h2>What comes with it</h2>
+
+            <dl class="facts">
+                <div>
+                    <dt>The demo never goes stale</dt>
+                    <dd>The demo runs in CI with the rest of your tests, so a change that breaks it fails the build. A rerun renders a fresh video, with nothing to re-record.</dd>
+                </div>
+
+                <div>
+                    <dt>A live demo stays on script</dt>
+                    <dd>A <code>present</code> run drives the app and waits for a key press at each step, so you talk while the test clicks.</dd>
+                </div>
+
+                <div>
+                    <dt>The test still catches bugs</dt>
+                    <dd>A console error or an uncaught exception fails the test, and a failed run keeps a screenshot and a trace.</dd>
+                </div>
+
+                <div>
+                    <dt>The voiceover keeps time</dt>
+                    <dd>Each caption holds for as long as its spoken line, so your voiceover stays in step with the video.</dd>
+                </div>
+
+                <div>
+                    <dt>Start from your tests</dt>
+                    <dd>Wrap the page of an existing Playwright test in a <code>Demo</code> and add captions one line at a time. The rest of the test stays as it is.</dd>
+                </div>
+
+                <div>
+                    <dt>Django is built in</dt>
+                    <dd>The Django adapter signs a user in and finds each route by name. The static adapter drives any site that is already running.</dd>
+                </div>
+            </dl>
+        </section>
+
+        <section class="house">
+            <div class="finale">
+                <h2 id="install">Put a test in the limelight</h2>
+
+                <div class="command">
+                    <code>pip install <span>"playwright-limelight[django,pytest]"</span></code>
+                    <button type="button" data-copy>Copy</button>
+                </div>
+
+                <ol class="steps">
+                    <li>
+                        <strong>Fetch a browser</strong>
+                        <p>Run <code>playwright install chromium</code>. A video render also needs <code>ffmpeg</code> on the PATH.</p>
+                    </li>
+
+                    <li>
+                        <strong>Register the plugins</strong>
+                        <p>Add <code>limelight.pytest_plugin</code> to <code>pytest_plugins</code> in <code>conftest.py</code>. A Django project adds <code>limelight.django.pytest_plugin</code> as well.</p>
+                    </li>
+
+                    <li>
+                        <strong>Run it narrated</strong>
+                        <p>Write the demo as a test, then run it with <code>DEMO_MODE=narrate</code> and <code>--headed</code>.</p>
+                    </li>
+                </ol>
+
+                <p class="needs">The package needs Python 3.11 and Playwright 1.49 or newer. The <a href="overview/">guides</a> cover scenes, components, barriers, and configuration, and the <a href="reference/limelight/">API reference</a> documents each module.</p>
+
+                <footer>
+                    <div class="footer-links">
+                        <a href="https://github.com/stratusadv/limelight/releases">All releases</a>
+                        <a href="https://github.com/stratusadv/limelight/blob/main/LICENSE">MIT license</a>
+                    </div>
+
+                    <a class="stratus" href="https://stratusadv.com">
+                        <svg viewBox="57.18 58.93 400.68 270.54" fill="currentColor" aria-hidden="true">
+                            <circle cx="257.45724" cy="129.15694" r="70.22899"/>
+                            <path d="M387.62723,189.00607c-31.25,44.67004-75.14996,70.54004-130.16998,70.54004s-98.92-25.87-130.16998-70.54004c53.77996,0,52.24999,51.27002,130.16998,51.27002S333.84726,189.00607,387.62723,189.00607z"/>
+                            <path d="M457.85727,259.23611c0,38.77997-31.45001,70.22998-70.23004,70.22998c-53.77997,0-52.25-51.27002-130.16998-51.27002s-76.39003,51.27002-130.16998,51.27002c-38.78003,0-70.23004-31.45001-70.23004-70.22998c0-38.79004,31.45002-70.23004,70.23004-70.23004c31.24999,44.67004,75.14996,70.54004,130.16998,70.54004s98.91998-25.87,130.16998-70.54004C426.40726,189.00607,457.85727,220.44608,457.85727,259.23611z"/>
+                        </svg>
+                        <span>Stratus Advanced Technologies</span>
+                    </a>
+                </footer>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const APEX_X = 0.86;
+        const APEX_Y = -0.3;
+        const COPY_RESET_MS = 1600;
+        const FOLLOW_MS = 220;
+        const FRAME_MS_MAX = 100;
+        const IRIS_MS = 1400;
+        const REVEAL_MS_MAX = 2000;
+
+        const SCENES = [
+            { cue: 0, ms: 900, state: 'page' },
+            { cue: 1, ms: 2200, state: 'title' },
+            { cue: 2, ms: 2400, state: 'caption' },
+            { cue: 3, ms: 2000, state: 'spot' },
+            { cue: 4, ms: 900, state: 'glide' },
+            { cue: 4, ms: 2800, state: 'approved' },
+        ];
+
+        const SETTLE_PX = 0.4;
+        const SPILL_REACH = 2.6;
+        const SPREAD_MAX = 0.98;
+        const WORDMARK_WIDTH = 404.08;
+
+        const beam = document.getElementById('beam');
+        const cues = document.querySelectorAll('[data-cue]');
+        const disc = document.getElementById('disc');
+        const motion = matchMedia('(prefers-reduced-motion: reduce)');
+        const pause = document.getElementById('pause');
+        const rehearsal = document.getElementById('rehearsal');
+        const spill = document.getElementById('spill');
+        const stage = document.getElementById('stage');
+        const wordmark = document.getElementById('wordmark');
+
+        const spot = {
+            apexX: 0,
+            apexY: 0,
+            homeX: 0,
+            homeY: 0,
+            markScale: 1,
+            markX: 0,
+            markY: 0,
+            open: 0,
+            radius: 0,
+            targetX: 0,
+            targetY: 0,
+            x: 0,
+            y: 0,
+        };
+
+        let irisStart = 0;
+        let lastTime = 0;
+        let paused = false;
+        let revealed = false;
+        let running = false;
+        let scene = 0;
+        let sceneTimer = 0;
+        let seen = false;
+
+        const advance = () => {
+            show((scene + 1) % SCENES.length);
+        };
+
+        const buildStrobes = () => {
+            for (const strip of document.querySelectorAll('.strobe')) {
+                for (const frame of strip.dataset.frames) {
+                    const dot = document.createElement('i');
+
+                    dot.classList.toggle('missed', frame === '0');
+                    strip.append(dot);
+                }
+            }
+        };
+
+        const clamp = (value, low, high) => Math.min(Math.max(value, low), high);
+
+        const copyCommand = async (event) => {
+            const button = event.currentTarget;
+            const text = button.previousElementSibling.textContent;
+
+            try {
+                await navigator.clipboard.writeText(text);
+                button.textContent = 'Copied';
+            } catch {
+                button.textContent = 'Select it';
+            }
+
+            setTimeout(() => {
+                button.textContent = 'Copy';
+            }, COPY_RESET_MS);
+        };
+
+        const follow = (event) => {
+            if (event.pointerType !== 'mouse' || motion.matches) return;
+
+            const box = stage.getBoundingClientRect();
+
+            spot.targetX = event.clientX - box.left;
+            spot.targetY = event.clientY - box.top;
+            wake();
+        };
+
+        const hold = (value) => {
+            paused = value;
+            pause.textContent = paused ? 'Play' : 'Pause';
+        };
+
+        const measure = () => {
+            const box = stage.getBoundingClientRect();
+            const mark = wordmark.getBoundingClientRect();
+
+            spot.apexX = box.width * APEX_X;
+            spot.apexY = box.height * APEX_Y;
+            spot.markScale = WORDMARK_WIDTH / mark.width;
+            spot.markX = mark.left - box.left;
+            spot.markY = mark.top - box.top;
+            spot.radius = disc.offsetWidth / 2;
+            spot.homeX = disc.offsetLeft + spot.radius;
+            spot.homeY = disc.offsetTop + spot.radius;
+        };
+
+        const paint = () => {
+            const radius = spot.radius * spot.open;
+            const [start, end] = tangents(radius);
+
+            beam.style.clipPath = `polygon(${spot.apexX}px ${spot.apexY}px, ${start}, ${end})`;
+            disc.style.transform = `translate(${spot.x - spot.homeX}px, ${spot.y - spot.homeY}px) scale(${spot.open})`;
+            spill.setAttribute('cx', (spot.x - spot.markX) * spot.markScale);
+            spill.setAttribute('cy', (spot.y - spot.markY) * spot.markScale);
+            spill.setAttribute('r', radius * SPILL_REACH * spot.markScale);
+        };
+
+        const pick = (event) => {
+            const cue = Number(event.currentTarget.dataset.cue);
+
+            hold(true);
+            show(SCENES.findIndex((entry) => entry.cue === cue));
+        };
+
+        const rehome = () => {
+            measure();
+            spot.targetX = spot.homeX;
+            spot.targetY = spot.homeY;
+            spot.x = spot.homeX;
+            spot.y = spot.homeY;
+            paint();
+        };
+
+        const reveal = () => {
+            if (revealed) return;
+
+            revealed = true;
+            spot.open = motion.matches ? 1 : 0;
+            rehome();
+            document.documentElement.classList.remove('loading');
+
+            if (motion.matches) return;
+
+            irisStart = performance.now();
+            wake();
+        };
+
+        const schedule = () => {
+            clearTimeout(sceneTimer);
+
+            const next = SCENES[(scene + 1) % SCENES.length];
+            const continues = next.cue === SCENES[scene].cue;
+
+            if (!continues && (paused || !seen)) return;
+
+            sceneTimer = setTimeout(advance, SCENES[scene].ms);
+        };
+
+        const show = (index) => {
+            scene = index;
+            rehearsal.dataset.state = SCENES[index].state;
+
+            for (const cue of cues) {
+                const current = Number(cue.dataset.cue) === SCENES[index].cue ? 'step' : 'false';
+
+                cue.setAttribute('aria-current', current);
+            }
+
+            schedule();
+        };
+
+        const showVersion = (project) => {
+            document.getElementById('version').textContent = `v${project.info.version}`;
+        };
+
+        const tangents = (radius) => {
+            const distance = Math.hypot(spot.x - spot.apexX, spot.y - spot.apexY);
+            const heading = Math.atan2(spot.y - spot.apexY, spot.x - spot.apexX);
+            const spread = Math.asin(Math.min(radius / distance, SPREAD_MAX));
+            const reach = distance * Math.cos(spread);
+
+            return [heading - spread, heading + spread].map((angle) => {
+                return `${spot.apexX + reach * Math.cos(angle)}px ${spot.apexY + reach * Math.sin(angle)}px`;
+            });
+        };
+
+        const tick = (time) => {
+            const elapsed = clamp(time - lastTime, 0, FRAME_MS_MAX);
+            const ease = 1 - Math.exp(-elapsed / FOLLOW_MS);
+            const progress = clamp((time - irisStart) / IRIS_MS, 0, 1);
+
+            lastTime = time;
+            spot.open = 1 - (1 - progress) ** 4;
+            spot.x += (spot.targetX - spot.x) * ease;
+            spot.y += (spot.targetY - spot.y) * ease;
+            paint();
+
+            const distance = Math.hypot(spot.targetX - spot.x, spot.targetY - spot.y);
+
+            if (progress === 1 && distance < SETTLE_PX) {
+                running = false;
+
+                return;
+            }
+
+            requestAnimationFrame(tick);
+        };
+
+        const toggle = () => {
+            hold(!paused);
+            schedule();
+        };
+
+        const wake = () => {
+            if (running) return;
+
+            running = true;
+            lastTime = performance.now();
+            requestAnimationFrame(tick);
+        };
+
+        const watch = (entries) => {
+            seen = entries[entries.length - 1].isIntersecting;
+            schedule();
+        };
+
+        const stylesheet = new Promise((resolve) => {
+            const link = document.getElementById('fonts');
+
+            if (link.sheet) {
+                resolve();
+
+                return;
+            }
+
+            link.addEventListener('load', resolve);
+            link.addEventListener('error', resolve);
+        });
+
+        fetch('https://pypi.org/pypi/playwright-limelight/json')
+            .then((response) => response.ok ? response.json() : Promise.reject(response.status))
+            .then(showVersion)
+            .catch(() => {});
+
+        buildStrobes();
+
+        for (const button of document.querySelectorAll('[data-copy]')) {
+            button.addEventListener('click', copyCommand);
+        }
+
+        for (const cue of cues) {
+            cue.addEventListener('click', pick);
+        }
+
+        hold(motion.matches);
+        pause.addEventListener('click', toggle);
+        new IntersectionObserver(watch, { threshold: 0.4 }).observe(rehearsal);
+        show(paused ? SCENES.findIndex((entry) => entry.state === 'spot') : 0);
+
+        stage.addEventListener('pointermove', follow);
+        window.addEventListener('resize', rehome);
+        stylesheet.then(() => document.fonts.ready).then(reveal);
+        setTimeout(reveal, REVEAL_MS_MAX);
+    </script>
+</body>
+</html>

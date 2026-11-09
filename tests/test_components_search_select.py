@@ -44,6 +44,8 @@ class FakeNode:
         return cast('Locator', self)
 
     def click(self, *, force: bool = False) -> None:
+        _ = force
+
         self.click_count += 1
 
     def count(self) -> int:
@@ -75,9 +77,11 @@ class FakeNode:
 
 
 def expect_stub(locator: object) -> SimpleNamespace:
+    _ = locator
+
     return SimpleNamespace(
         to_be_hidden=lambda: None,
-        to_contain_text=lambda text: None,
+        to_contain_text=lambda _: None,
     )
 
 
@@ -166,7 +170,7 @@ def test_open_retries_the_toggle_until_the_dropdown_shows(
 
     monkeypatch.setattr(
         'limelight.components.search_select.trigger_until_visible',
-        lambda trigger, locator: calls.append(locator),
+        lambda locator, _: calls.append(locator),
     )
 
     root = FakeNode()

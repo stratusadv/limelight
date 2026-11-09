@@ -164,7 +164,7 @@ class Scene:
         A headline narrates the element in full, and the element is waited for
         before anything is said about it, so the step is a barrier in a silent
         run as well as a caption in a narrated one. A label alone spotlights the
-        element without narration, and neither says nothing at all.
+        element without narration, and a call with neither shows nothing.
 
         :param locator: The locator for the element to show.
         :param headline: The narration headline, or an empty string for none.
@@ -176,7 +176,10 @@ class Scene:
 
         if headline:
             self.demo.reveal(locator, headline=headline, body=body, step=step, label=label)
-        elif label:
+
+            return
+
+        if label:
             self.demo.spotlight(locator, label=label)
 
     def expect_ready(self) -> None:

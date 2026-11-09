@@ -67,6 +67,8 @@ class GifExport:
         :raises FileNotFoundError: If the recorded video is missing.
         """
 
+        _ = events
+
         source = directory / VIDEO_FILE_NAME
         destination = directory / GIF_FILE_NAME
 
@@ -115,6 +117,8 @@ class VideoExport:
         :return: The path the render was written to.
         :raises FileNotFoundError: If the recorded video is missing.
         """
+
+        _ = events
 
         source = directory / VIDEO_FILE_NAME
         destination = directory / RENDER_FILE_NAME

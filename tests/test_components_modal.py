@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, cast
 from limelight.components.modal import FIELD_FILL_ATTEMPT_COUNT_MAX, Modal
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from typing import Self
 
     from playwright.sync_api import Locator
@@ -24,7 +25,7 @@ class DispatchModal(Modal):
 class FakeField:
     def __init__(self, values: list[str]) -> None:
         self.fill_values: list[str] = []
-        self.page = SimpleNamespace(wait_for_timeout=lambda milliseconds: None)
+        self.page = SimpleNamespace(wait_for_timeout=lambda _: None)
         self.values = values
 
     def as_locator(self) -> Locator:
@@ -57,9 +58,13 @@ class FakeNode:
         self.click_count += 1
 
     def evaluate(self, expression: str) -> str:
+        _ = expression
+
         return self.invalid_report
 
     def filter(self, **arguments: object) -> Self:
+        _ = arguments
+
         return self
 
     def get_by_role(self, role: str, *, name: str | None = None) -> Self:
@@ -92,8 +97,8 @@ class FakeDemo:
             get_by_role=self.node.get_by_role,
             get_by_text=self.node.get_by_text,
             locator=self.node.locator,
-            wait_for_load_state=lambda state: None,
-            wait_for_timeout=lambda milliseconds: None,
+            wait_for_load_state=lambda _: None,
+            wait_for_timeout=lambda _: None,
         )
 
     def as_demo(self) -> Demo:
@@ -107,25 +112,31 @@ class FakeDemo:
         self.fills.append(pair)
 
     def narrate(self, title: str, *, body: str = '', step: str = '') -> None:
+        _ = body
+
         narration = (title, step)
         self.narrations.append(narration)
 
     def pause(self) -> None:
-        return
+        _ = self
 
     def screenshot(self, name: str) -> None:
         self.shots.append(name)
 
     def spotlight(self, locator: object, *, label: str = '') -> None:
+        _ = locator
+
         self.spotlights.append(label)
 
 
 def expect_stub(locator: object) -> SimpleNamespace:
+    _ = locator
+
     return SimpleNamespace(
-        to_be_enabled=lambda timeout: None,
-        to_be_hidden=lambda timeout: None,
-        to_be_visible=lambda timeout: None,
-        to_have_value=lambda value, timeout: None,
+        to_be_enabled=lambda **_: None,
+        to_be_hidden=lambda **_: None,
+        to_be_visible=lambda **_: None,
+        to_have_value=lambda *_, **__: None,
     )
 
 
@@ -292,9 +303,14 @@ def test_open_with_retries_the_trigger_until_the_option_shows(
 ) -> None:
     calls: list[object] = []
 
+    def trigger_until_visible_stub(locator: object, trigger: Callable[[], None]) -> None:
+        calls.append(locator)
+
+        trigger()
+
     monkeypatch.setattr(
         'limelight.components.modal.trigger_until_visible',
-        lambda trigger, locator: calls.append(locator),
+        trigger_until_visible_stub,
     )
 
     demo = FakeDemo()
@@ -304,4 +320,5 @@ def test_open_with_retries_the_trigger_until_the_option_shows(
     modal.open_with(cast('Locator', trigger), reveals_text='Row 20')
 
     assert calls == [demo.node]
+    assert demo.clicks == [trigger]
     assert demo.node.texts == [('Row 20', True)]

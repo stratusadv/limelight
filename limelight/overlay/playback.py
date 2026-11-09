@@ -5,14 +5,15 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from limelight.errors import OverlayError
+from limelight.limits import SPEED_FACTOR_MAX, SPEED_FACTOR_MIN
+
 if TYPE_CHECKING:
     from limelight.capture.renderer import FrameClock
     from limelight.config import DemoConfig
     from limelight.overlay.bridge import Bridge
 
 
-SPEED_FACTOR_LIVE_MAX = 1000.0
-SPEED_FACTOR_LIVE_MIN = 0.1
 WAIT_OVERHEAD_MS_MIN = 1.0
 WAIT_PAUSED_MS_MAX = 3_600_000
 WAIT_SLICE_COUNT_MAX = 100_000
@@ -29,9 +30,14 @@ def _overhead_ms(started: float) -> float:
 
     :param started: The monotonic timestamp the read began at.
     :return: The elapsed milliseconds, or 0 if the read was faster than the floor.
+    :raises ValueError: If the read began in the future.
     """
 
     elapsed_ms = (time.monotonic() - started) * 1000
+
+    if elapsed_ms < 0:
+        message = f'the read began {-elapsed_ms}ms in the future'
+        raise ValueError(message)
 
     if elapsed_ms < WAIT_OVERHEAD_MS_MIN:
         return 0.0
@@ -47,11 +53,11 @@ def _speed_factor_clamped(speed_factor: float) -> float:
     :return: The multiplier, clamped to the supported range.
     """
 
-    if speed_factor < SPEED_FACTOR_LIVE_MIN:
-        return SPEED_FACTOR_LIVE_MIN
+    if speed_factor < SPEED_FACTOR_MIN:
+        return SPEED_FACTOR_MIN
 
-    if speed_factor > SPEED_FACTOR_LIVE_MAX:
-        return SPEED_FACTOR_LIVE_MAX
+    if speed_factor > SPEED_FACTOR_MAX:
+        return SPEED_FACTOR_MAX
 
     return speed_factor
 
@@ -111,7 +117,7 @@ class Playback:
         self._bridge = bridge
         self._clock = clock
         self._controls = config.controls
-        self._speed_factor = _speed_factor_clamped(config.speed_factor)
+        self._speed_factor = config.speed_factor
         self._step_mode = config.present
         self._step_ms = config.step_ms
 
@@ -141,7 +147,7 @@ class Playback:
             speed_factor=float(speed_factor),
         )
 
-    def _wait_gated(self, ms: int, *, gated: bool) -> None:
+    def _wait_gated(self, hold_ms: int, *, gated: bool) -> None:
         """
         A method that waits out a duration under the control bar.
 
@@ -150,12 +156,12 @@ class Playback:
         actually spent, scaled by the speed in force for that slice, so a viewer who
         speeds up mid-wait shortens only the remainder.
 
-        :param ms: The duration to wait at normal speed.
+        :param hold_ms: The duration to wait at normal speed.
         :param gated: Whether the wait consumes a skip, rather than only observing one.
-        :raises TimeoutError: If the pause outlasts the maximum, or the slices run out.
+        :raises OverlayError: If the pause outlasts the maximum, or the slices run out.
         """
 
-        remaining_ms = float(ms)
+        remaining_ms = float(hold_ms)
         paused_ms_total = 0.0
 
         for _ in range(WAIT_SLICE_COUNT_MAX):
@@ -170,8 +176,9 @@ class Playback:
 
                 return
 
-            if state.skip:
-                return
+            if gated:
+                if state.skip:
+                    return
 
             if state.paused:
                 self._bridge.page.wait_for_timeout(WAIT_SLICE_MS)
@@ -180,7 +187,7 @@ class Playback:
 
                 if paused_ms_total > WAIT_PAUSED_MS_MAX:
                     message = f'demo paused longer than {WAIT_PAUSED_MS_MAX}ms; aborting'
-                    raise TimeoutError(message)
+                    raise OverlayError(message)
 
                 continue
 
@@ -194,13 +201,13 @@ class Playback:
             remaining_ms -= _spent_ms(started, floor_ms=slice_ms) * speed_factor
 
         message = f'wait exceeded {WAIT_SLICE_COUNT_MAX} slices with {remaining_ms}ms left'
-        raise TimeoutError(message)
+        raise OverlayError(message)
 
     def _wait_step(self) -> None:
         """
         A method that waits for the viewer to advance the demo by hand.
 
-        :raises TimeoutError: If the viewer never advances within the maximum.
+        :raises OverlayError: If the viewer never advances within the maximum.
         """
 
         waited_ms_total = 0
@@ -218,12 +225,12 @@ class Playback:
 
             if waited_ms_total > WAIT_PAUSED_MS_MAX:
                 message = f'step wait exceeded {WAIT_PAUSED_MS_MAX}ms without advancing; aborting'
-                raise TimeoutError(message)
+                raise OverlayError(message)
 
             self._bridge.page.wait_for_timeout(WAIT_SLICE_MS)
 
         message = f'step wait exceeded {WAIT_SLICE_COUNT_MAX} slices without advancing; aborting'
-        raise TimeoutError(message)
+        raise OverlayError(message)
 
     @property
     def frame_paced(self) -> bool:
@@ -240,8 +247,8 @@ class Playback:
         """
         A property that reads the speed the viewer has the demo running at.
 
-        :return: The multiplier in force, falling back to the configured one when
-            the controls are absent.
+        :return: The multiplier in force, or the configured one when the controls are
+            absent or report nothing.
         """
 
         if not self._controls:
@@ -254,40 +261,40 @@ class Playback:
 
         return _speed_factor_clamped(state.speed_factor)
 
-    def sleep(self, ms: float) -> None:
+    def sleep(self, hold_ms: float) -> None:
         """
         A method that holds for a duration, on the frame clock or the wall clock.
 
-        :param ms: The duration to hold for.
+        :param hold_ms: The duration to hold for.
         """
 
         if self._clock is not None:
-            self._clock.wait_ms(ms)
+            self._clock.wait_ms(hold_ms)
 
             return
 
-        self._bridge.page.wait_for_timeout(ms)
+        self._bridge.page.wait_for_timeout(hold_ms)
 
-    def step_ms_of(self, ms: int | None) -> int:
+    def step_ms_of(self, hold_ms: int | None) -> int:
         """
         A method that resolves a step duration against the configured default.
 
-        :param ms: The duration asked for, or None to use the default.
+        :param hold_ms: The duration asked for, or None to use the default.
         :return: The duration the step holds for.
         """
 
-        if ms is not None:
-            return ms
+        if hold_ms is not None:
+            return hold_ms
 
         return self._step_ms
 
-    def wait(self, ms: int, *, gated: bool = True) -> None:
+    def wait(self, hold_ms: int, *, gated: bool = True) -> None:
         """
         A method that waits out a step.
 
-        :param ms: The duration to wait at normal speed.
+        :param hold_ms: The duration to wait at normal speed.
         :param gated: Whether the wait consumes a skip, rather than only observing one.
-        :raises TimeoutError: If the viewer never advances a stepped or paused demo.
+        :raises OverlayError: If the viewer never advances a stepped or paused demo.
         """
 
         if self._step_mode:
@@ -297,8 +304,8 @@ class Playback:
                 return
 
         if not self._controls:
-            self.sleep(ms / self.speed_factor_live)
+            self.sleep(hold_ms / self.speed_factor_live)
 
             return
 
-        self._wait_gated(ms, gated=gated)
+        self._wait_gated(hold_ms, gated=gated)

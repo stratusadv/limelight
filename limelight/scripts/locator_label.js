@@ -1,14 +1,5 @@
 element => {
-    const type = (element.type || '').toLowerCase();
-    const checkable = type === 'checkbox' || type === 'radio';
-    const labelled = element.labels && element.labels.length ? element.labels[0].innerText : '';
-    const value = checkable ? '' : (element.value || '');
-    const text = element.innerText
-        || labelled
-        || value
-        || element.getAttribute('aria-label')
-        || element.getAttribute('placeholder')
-        || '';
-
-    return text.trim().split('\n')[0].slice(0, 80);
+"use strict";var limelight=(()=>{var u=Object.defineProperty;var f=Object.getOwnPropertyDescriptor;var p=Object.getOwnPropertyNames;var b=Object.prototype.hasOwnProperty;var g=(n,t)=>{for(var e in t)u(n,e,{get:t[e],enumerable:!0})},N=(n,t,e,a)=>{if(t&&typeof t=="object"||typeof t=="function")for(let r of p(t))!b.call(n,r)&&r!==e&&u(n,r,{get:()=>t[r],enumerable:!(a=f(t,r))||a.enumerable});return n};var w=n=>N(u({},"__esModule",{value:!0}),n);var h={};g(h,{locatorLabel:()=>L});var c=class extends Error{constructor(t,e){super(t,e),this.name="AssertionError"}};function o(n,t){if(!n)throw new c(t)}var E=80,l="a label is read on a live page",i="a label belongs to an element",T="password";function L(n){o(n.nodeType===Node.ELEMENT_NODE,i),o(n.ownerDocument.defaultView!==null,l);let e=[s(n,"innerText"),O(n),y(n),n.getAttribute("aria-label")??"",n.getAttribute("placeholder")??""].find(d=>d.length>0)??"",[a=""]=e.trim().split(`
+`,1),r=a.slice(0,E);return o(r.length<=E,"a label is one short line"),r}function y(n){return o(n.nodeType===Node.ELEMENT_NODE,i),o(n.ownerDocument.defaultView!==null,l),D(n)||s(n,"type").toLowerCase()===T?"":s(n,"value")}function D(n){o(n.nodeType===Node.ELEMENT_NODE,i),o(n.ownerDocument.defaultView!==null,l);let t=s(n,"type").toLowerCase();return t==="checkbox"?!0:t==="radio"}function O(n){o(n.nodeType===Node.ELEMENT_NODE,i),o(n.ownerDocument.defaultView!==null,l);let t=Reflect.get(n,"labels");if(!(t instanceof NodeList))return"";let[e]=[...t];return e instanceof Element?s(e,"innerText"):""}function s(n,t){o(t.length>0,"a read names its property"),o(n.nodeType===Node.ELEMENT_NODE,i);let e=Reflect.get(n,t);return typeof e=="string"?e:""}return w(h);})();
+return limelight.locatorLabel(element);
 }

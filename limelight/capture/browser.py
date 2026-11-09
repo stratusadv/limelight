@@ -60,7 +60,7 @@ def launch_arguments_frame_control(endpoint: str, *, device_scale_factor: int = 
     A function that builds the Chrome arguments for frame-by-frame capture.
 
     The switches hand the compositor to the driver: animation and scrolling are
-    pulled off their own threads, every compositor stage runs before a draw, and
+    pulled off their own threads, each compositor stage runs before a draw, and
     begin-frame control lets the renderer produce one frame per request rather
     than on a wall clock, so a slow screenshot cannot skew the timeline.
 

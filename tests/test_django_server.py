@@ -13,19 +13,23 @@ if TYPE_CHECKING:
     from typing import Any
 
 
-def server_stub(calls: list[tuple[str, object]], *, fails: bool = False) -> Any:
+def server_stub(calls: list[tuple[str, object]], *, fails: bool = False) -> SequentialWSGIServer:
     def finish_request(request: object, client_address: object) -> None:
+        _ = client_address
+
         calls.append(('finish', request))
 
         if fails:
             message = 'the handler blew up'
             raise RuntimeError(message)
 
-    return SimpleNamespace(
+    server = SimpleNamespace(
         finish_request=finish_request,
-        handle_error=lambda request, client_address: calls.append(('error', request)),
+        handle_error=lambda request, _: calls.append(('error', request)),
         shutdown_request=lambda request: calls.append(('shutdown', request)),
     )
+
+    return cast('SequentialWSGIServer', server)
 
 
 def test_a_request_is_served_in_the_calling_thread() -> None:

@@ -15,7 +15,7 @@ SLIDE_STEP_COUNT_DEFAULT = 25
 @dataclass(frozen=True)
 class SlideGeometry:
     """
-    The coordinates a slider drag runs between.
+    A record of the coordinates a slider drag runs between.
 
     This class holds the page positions measured once, before the mouse is
     pressed, so a drag never re-reads a box that the drag itself has moved.

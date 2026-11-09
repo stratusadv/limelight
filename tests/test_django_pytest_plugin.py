@@ -123,7 +123,7 @@ def test_page_applies_the_navigation_timeout() -> None:
 def test_configure_allows_async_unsafe(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv('DJANGO_ALLOW_ASYNC_UNSAFE', raising=False)
 
-    pytest_plugin.pytest_configure(cast('pytest.Config', None))
+    pytest_plugin.pytest_configure(cast('pytest.Config', object()))
 
     assert os.environ['DJANGO_ALLOW_ASYNC_UNSAFE'] == 'true'
 
@@ -165,5 +165,8 @@ def test_the_live_server_fixture_stops_the_server_it_opened(
 
     assert isinstance(server, LiveServerStub)
     assert stops == []
-    assert next(servers, 'exhausted') == 'exhausted'
+
+    outcome = next(servers, 'exhausted')
+
+    assert outcome == 'exhausted'
     assert stops == ['localhost']

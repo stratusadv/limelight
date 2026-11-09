@@ -55,7 +55,7 @@ class StaticApplication:
         """
         The constructor for the StaticApplication class.
 
-        :param base_url: The origin every route is resolved against.
+        :param base_url: The origin each route is resolved against.
         :param login: The callable that signs a user in, or None for a site that needs no login.
         :raises ValueError: If the base URL is empty.
         """

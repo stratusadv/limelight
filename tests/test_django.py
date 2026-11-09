@@ -8,18 +8,22 @@ from typing_extensions import override
 from django.contrib.auth import BACKEND_SESSION_KEY, HASH_SESSION_KEY, SESSION_KEY
 from django.db import OperationalError
 
+from limelight import BarrierError
 from limelight.application import Application
 from limelight.django import (
-    AUTH_BACKEND_FALLBACK,
     DjangoApplication,
-    auth_backend,
     force_login,
     sign_in,
     visit,
     wait_until,
 )
+from limelight.django.application import AUTH_BACKEND_FALLBACK, auth_backend
 
 from fakes import FakePage
+
+
+CREDENTIAL = 'secret'
+CREDENTIAL_SELECTOR = '#id_password'
 
 
 class FakeLiveServer:
@@ -48,6 +52,8 @@ class FakeUser:
     pk = 7
 
     def get_session_auth_hash(self) -> str:
+        _ = self
+
         return 'hash'
 
 
@@ -59,14 +65,14 @@ def session_engine_install(monkeypatch: pytest.MonkeyPatch, store: FakeSessionSt
         SESSION_ENGINE='django.contrib.sessions.backends.db',
     )
 
-    monkeypatch.setattr('limelight.django.import_module', lambda name: engine_stub)
-    monkeypatch.setattr('limelight.django.settings', settings_stub)
+    monkeypatch.setattr('limelight.django.application.import_module', lambda _: engine_stub)
+    monkeypatch.setattr('limelight.django.application.settings', settings_stub)
 
 
 def test_auth_backend_uses_first_configured(monkeypatch: pytest.MonkeyPatch) -> None:
     settings_stub = SimpleNamespace(AUTHENTICATION_BACKENDS=['app.auth.PortalBackend'])
 
-    monkeypatch.setattr('limelight.django.settings', settings_stub)
+    monkeypatch.setattr('limelight.django.application.settings', settings_stub)
 
     assert auth_backend() == 'app.auth.PortalBackend'
 
@@ -74,7 +80,7 @@ def test_auth_backend_uses_first_configured(monkeypatch: pytest.MonkeyPatch) -> 
 def test_auth_backend_falls_back_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
     settings_stub = SimpleNamespace(AUTHENTICATION_BACKENDS=[])
 
-    monkeypatch.setattr('limelight.django.settings', settings_stub)
+    monkeypatch.setattr('limelight.django.application.settings', settings_stub)
 
     assert auth_backend() == AUTH_BACKEND_FALLBACK
 
@@ -103,7 +109,7 @@ def reverse_stub_install(monkeypatch: pytest.MonkeyPatch, calls: list[tuple[str,
 
         return f'/{route}/'
 
-    monkeypatch.setattr('limelight.django.reverse', reverse_stub)
+    monkeypatch.setattr('limelight.django.application.reverse', reverse_stub)
 
 
 def test_url_passes_no_kwargs_when_none_are_given(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -152,11 +158,13 @@ def test_force_login_writes_the_session_cookie(monkeypatch: pytest.MonkeyPatch) 
         HASH_SESSION_KEY: 'hash',
     }
 
-    assert page.context.added_cookies == [{
-        'name': 'sessionid',
-        'value': 'session-key',
-        'url': 'http://localhost:9999',
-    }]
+    assert page.context.added_cookies == [
+        {
+            'name': 'sessionid',
+            'value': 'session-key',
+            'url': 'http://localhost:9999',
+        }
+    ]
 
 
 def test_force_login_raises_when_the_session_has_no_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -188,12 +196,12 @@ def test_sign_in_fills_the_default_selectors(monkeypatch: pytest.MonkeyPatch) ->
     settings_stub = SimpleNamespace(LOGIN_URL='auth:sign-in')
     calls: list[tuple[str, object]] = []
 
-    monkeypatch.setattr('limelight.django.settings', settings_stub)
+    monkeypatch.setattr('limelight.django.application.settings', settings_stub)
     reverse_stub_install(monkeypatch, calls)
 
     page = FakePage()
 
-    sign_in(page.as_page(), FakeLiveServer(), username='operator', password='secret')
+    sign_in(page.as_page(), FakeLiveServer(), username='operator', password=CREDENTIAL)
 
     assert page.context.clear_count == 1
     assert page.goto_urls == ['http://localhost:9999/auth:sign-in/']
@@ -205,7 +213,7 @@ def test_sign_in_fills_the_default_selectors(monkeypatch: pytest.MonkeyPatch) ->
 
     assert page.locator_selectors == selectors_expected
     assert page.locator_locators[0].fill_values == ['operator']
-    assert page.locator_locators[1].fill_values == ['secret']
+    assert page.locator_locators[1].fill_values == [CREDENTIAL]
     assert page.role_queries == [('button', 'Sign in', False)]
     assert page.role_locators[0].click_count == 1
     assert page.load_states == ['networkidle']
@@ -214,7 +222,7 @@ def test_sign_in_fills_the_default_selectors(monkeypatch: pytest.MonkeyPatch) ->
 def test_sign_in_honors_overridden_selectors(monkeypatch: pytest.MonkeyPatch) -> None:
     settings_stub = SimpleNamespace(LOGIN_URL='auth:sign-in')
 
-    monkeypatch.setattr('limelight.django.settings', settings_stub)
+    monkeypatch.setattr('limelight.django.application.settings', settings_stub)
     reverse_stub_install(monkeypatch, [])
 
     page = FakePage()
@@ -223,13 +231,13 @@ def test_sign_in_honors_overridden_selectors(monkeypatch: pytest.MonkeyPatch) ->
         page.as_page(),
         FakeLiveServer(),
         username='operator',
-        password='secret',
+        password=CREDENTIAL,
         username_selector='#id_username',
-        password_selector='#id_password',
+        password_selector=CREDENTIAL_SELECTOR,
         submit_name='Log in',
     )
 
-    assert page.locator_selectors == ['#id_username', '#id_password']
+    assert page.locator_selectors == ['#id_username', CREDENTIAL_SELECTOR]
     assert page.role_queries == [('button', 'Log in', False)]
 
 
@@ -281,10 +289,10 @@ def test_wait_until_returns_as_soon_as_the_predicate_holds() -> None:
 def test_wait_until_raises_once_attempts_are_exhausted() -> None:
     page = FakePage()
 
-    with pytest.raises(AssertionError, match='condition did not hold after 750ms'):
+    with pytest.raises(BarrierError, match='condition did not hold across 3 polls 250ms apart'):
         wait_until(page.as_page(), lambda: False, attempt_count_max=3, interval_ms=250)
 
-    assert page.waits_ms == [250, 250, 250]
+    assert page.waits_ms == [250, 250]
 
 
 def test_wait_until_reconnects_after_an_operational_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -295,7 +303,7 @@ def test_wait_until_reconnects_after_an_operational_error(monkeypatch: pytest.Mo
 
     connection_stub.close = close
 
-    monkeypatch.setattr('limelight.django.connection', connection_stub)
+    monkeypatch.setattr('limelight.django.application.connection', connection_stub)
 
     page = FakePage()
     attempts: list[int] = []

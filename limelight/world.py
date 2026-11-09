@@ -6,7 +6,6 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from typing import TypeVar
 
-
     T = TypeVar('T')
 
 
@@ -29,14 +28,14 @@ class World:
                 self._orders = {}
 
             def add_order(self, key, **field_data):
-                self._claim(self._orders, key, 'order')
+                self._claim(self._orders, key, kind='order')
 
                 self._orders[key] = create_test_order(name=key, **field_data)
 
                 return self
 
             def order(self, key):
-                return self._require(self._orders, key, 'order')
+                return self._require(self._orders, key, kind='order')
     """
 
     def __init__(self, user: object) -> None:
@@ -49,7 +48,7 @@ class World:
         self.user = user
 
     @staticmethod
-    def _claim(registry: Mapping[str, object], name: str, kind: str) -> None:
+    def _claim(registry: Mapping[str, object], name: str, *, kind: str) -> None:
         """
         A method that refuses a key the registry already holds.
 
@@ -64,7 +63,7 @@ class World:
             raise ValueError(message)
 
     @staticmethod
-    def _require(registry: Mapping[str, T], name: str, kind: str) -> T:
+    def _require(registry: Mapping[str, T], name: str, *, kind: str) -> T:
         """
         A method that reads a key the registry must hold.
 

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="limelight">
+    <title>limelight</title>
+    <defs>
+        <linearGradient id="limelight-icon-on-dark-1" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="1024">
+            <stop offset="0.000" stop-color="#161C20"/>
+            <stop offset="1.000" stop-color="#0A0E11"/>
+        </linearGradient>
+        <linearGradient id="limelight-icon-on-dark-2" gradientUnits="userSpaceOnUse" x1="556.355" y1="569.505" x2="556.355" y2="809.33">
+            <stop offset="0.000" stop-color="#168153"/>
+            <stop offset="0.349" stop-color="#8BDB28"/>
+            <stop offset="0.771" stop-color="#E5FA07"/>
+        </linearGradient>
+        <linearGradient id="limelight-icon-on-dark-3" gradientUnits="userSpaceOnUse" x1="320.373" y1="455.555" x2="832.75" y2="455.555">
+            <stop offset="0.000" stop-color="#D1F75D"/>
+            <stop offset="0.328" stop-color="#43A271"/>
+            <stop offset="0.667" stop-color="#036A73"/>
+            <stop offset="0.849" stop-color="#003A42"/>
+        </linearGradient>
+        <linearGradient id="limelight-icon-on-dark-4" gradientUnits="userSpaceOnUse" x1="398.971" y1="360.42" x2="641.155" y2="660.93">
+            <stop offset="0.000" stop-color="#FBFB54"/>
+            <stop offset="0.354" stop-color="#91F066"/>
+            <stop offset="0.693" stop-color="#12C9A3"/>
+            <stop offset="1.000" stop-color="#088184"/>
+        </linearGradient>
+    </defs>
+    <rect width="1024" height="1024" rx="225" fill="url(#limelight-icon-on-dark-1)"/>
+    <path fill="url(#limelight-icon-on-dark-2)" d="M320.505 512L320.505 755.161C320.505 774.096 330.607 791.593 347.005 801.061C363.403 810.528 383.607 810.528 400.005 801.061L800.9 569.604L708.893 496.1Z"/>
+    <path fill="url(#limelight-icon-on-dark-3)" d="M320.505 268.839C320.505 249.904 330.607 232.407 347.005 222.939C363.403 213.472 383.607 213.472 400.005 222.939L800.9 454.396C821.48 466.278 834.158 488.236 834.158 512C834.158 535.764 821.48 557.722 800.9 569.604L708.893 512L320.505 512Z"/>
+    <path fill="url(#limelight-icon-on-dark-4)" d="M320.505 268.839L708.893 512L320.505 755.161Z"/>
+</svg>

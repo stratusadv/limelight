@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from playwright.sync_api import expect
 
-from limelight.components.modal import ELEMENT_WAIT_TIMEOUT_MS
+from limelight.limits import ELEMENT_WAIT_TIMEOUT_MS
 
 if TYPE_CHECKING:
     from playwright.sync_api import Locator, Page
@@ -20,10 +20,10 @@ class Dropdown:
     text a viewer reads. The trigger is brought into view before it is clicked,
     because a menu opened offscreen draws its spotlight over nothing, and the
     actions are filtered to the visible ones, because a page holding one menu per
-    row keeps every closed menu in the markup.
+    row keeps each closed menu in the markup.
 
     The trigger, the menu, and its actions are all scoped to the region that owns
-    them. Handing a row or a card as the root is what separates one row's menu
+    them. A row or a card handed in as the root is what separates one row's menu
     from the fifty others on the page, and it is what keeps a menu left open
     elsewhere from answering for this one.
 
