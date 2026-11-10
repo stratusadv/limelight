@@ -492,6 +492,8 @@ class FrameRenderer:
 
                 attachment = await self._attached(browser, navigation)
 
+            step_due_at = self._clock() + self._interval_ms / 1000
+
             if navigation.in_progress:
                 navigated = True
 
@@ -503,6 +505,11 @@ class FrameRenderer:
                     await attachment.clock.paused()
 
                 image_last = await self._frame_captured(attachment, sink, image_last)
+
+            step_rest_seconds = step_due_at - self._clock()
+
+            if step_rest_seconds > 0:
+                await asyncio.sleep(step_rest_seconds)
 
         message = f'the frame renderer passed {RENDER_STEP_COUNT_MAX} steps; aborting'
         raise RenderError(message)

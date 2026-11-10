@@ -37,7 +37,9 @@ if TYPE_CHECKING:
     from playwright.sync_api import Page
 
 
+CAPTURE_FRAME_COUNT = 5
 CLOCK_READING_COUNT_MAX = 100
+NAVIGATION_STEP_COUNT = 4
 STALLED_WAIT_COUNT_MAX = 10
 
 
@@ -61,6 +63,12 @@ class TickingPage(FakePage):
         super().wait_for_timeout(timeout)
 
         self._renderer_holder[0]._frame_count += 1
+
+
+def asyncio_sleeping(sleep: Callable[[float], Awaitable[None]]) -> SimpleNamespace:
+    functions = {**vars(asyncio), 'sleep': sleep}
+
+    return SimpleNamespace(**functions)
 
 
 def clock_stepping(step_seconds: float) -> Callable[[], float]:
@@ -651,6 +659,67 @@ def test_a_navigation_holds_the_frames_until_it_settles(monkeypatch: pytest.Monk
     assert policies[0]['policy'] == 'advance'
     assert policies[1]['policy'] == 'pause'
     assert images_last == [b'', b'x']
+
+
+def test_a_navigation_moves_the_page_clock_no_faster_than_the_wall_clock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capture, sessions, _ = capture_build(monkeypatch, 'target-paced')
+    wall = SimpleNamespace(seconds=0.0)
+
+    async def sleep_simulated(seconds: float) -> None:
+        wall.seconds += seconds
+
+        await asyncio.sleep(0)
+
+    watch = _NavigationWatch()
+
+    watch._started({'frameId': 'main'})
+
+    monkeypatch.setattr(capture, '_clock', lambda: wall.seconds)
+    monkeypatch.setattr(renderer, 'asyncio', asyncio_sleeping(sleep_simulated))
+    monkeypatch.setattr('limelight.capture.renderer._NavigationWatch', lambda: watch)
+    monkeypatch.setattr('limelight.capture.renderer.RENDER_STEP_COUNT_MAX', NAVIGATION_STEP_COUNT)
+
+    with pytest.raises(RenderError, match=f'passed {NAVIGATION_STEP_COUNT} steps'):
+        frames_capture(capture)
+
+    policies = [parameters for parameters in sessions[0].parameters if isinstance(parameters, dict)]
+    advance_count = sum(1 for policy in policies if policy['policy'] == 'advance')
+    page_ms = advance_count * capture._interval_ms
+
+    assert advance_count == NAVIGATION_STEP_COUNT
+    assert wall.seconds * 1000 == pytest.approx(page_ms)
+
+
+def test_a_capture_slower_than_the_wall_clock_is_never_held_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capture, _, images_last = capture_build(monkeypatch, 'target-slow')
+    frame_captured = capture._frame_captured
+    sleeps: list[float] = []
+
+    async def sleep_recorded(seconds: float) -> None:
+        sleeps.append(seconds)
+
+        await asyncio.sleep(0)
+
+    async def frame_counted(attachment: object, sink: object, image_last: bytes) -> bytes:
+        image = await frame_captured(cast('Any', attachment), cast('Any', sink), image_last)
+
+        if len(images_last) == CAPTURE_FRAME_COUNT:
+            capture._stop.set()
+
+        return image
+
+    monkeypatch.setattr(capture, '_clock', clock_stepping(1.0))
+    monkeypatch.setattr(capture, '_frame_captured', frame_counted)
+    monkeypatch.setattr(renderer, 'asyncio', asyncio_sleeping(sleep_recorded))
+
+    frames_capture(capture)
+
+    assert len(images_last) == CAPTURE_FRAME_COUNT
+    assert [seconds for seconds in sleeps if seconds > 0] == []
 
 
 class RecordingSink:
